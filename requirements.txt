@@ -1,1 +1,6 @@
 kaggle
+docker
+pyspark
+langchain
+langchain-openai
+langgraph

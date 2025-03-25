@@ -1,0 +1,11 @@
+# docker-compose.yml
+version: '3'
+services:
+  kaggle-api:
+    build:
+      context: .
+      dockerfile: docker/kaggle_api.dockerfile
+    environment:
+      - KAGGLE_USERNAME=${KAGGLE_USERNAME}
+      - KAGGLE_KEY=${KAGGLE_KEY}
+    entrypoint: ["kaggle", "datasets", "list"]
