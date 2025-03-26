@@ -1,20 +1,19 @@
-import kagglehub
 from kagglehub import KaggleDatasetAdapter
 from typing_extensions import TypedDict
-from langgraph.graph import MessagesState
-from langchain_openai.chat_models import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from db_finder import cli_kaggle_docker
 import pickle
 import pandas as pd
-
+from main import chat
 
 class CodeInterpreterState(TypedDict):
-    messages: list[MessagesState]
+    messages: list[BaseMessage]
     code: str
     kaggle_file: str
     memory_location: str = "tmp/memory.pkl" # this stores memory in pickle file, can be accessed by generated subprocess
     facts: dict[str, str] = {}
+    code_file: str = "codespace.py"
+    query: str
 
 def get_memory_keys(state: CodeInterpreterState) -> str:
     """Grabs the memory variables from the pickle file."""
@@ -42,8 +41,6 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
     """
 
     while True:
-        
-        
         central_msg = HumanMessage(content="""
             You are an assistant that helps your user get closer to {user_query}
             You have access to the following information:
@@ -63,7 +60,7 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
                 "details": {{
                     "code": "Python code to run" | null,
                     "dataset": "Kaggle dataset reference" | null, 
-                    "fact": "Fact to store" | null,
+                    "fact": "Return in format key: value" | null,
                     "final_answer": "Answer to return" | null
                 }},
                 "reason": "Explanation for taking this action"
@@ -74,9 +71,47 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
             keys_of_facts= ", ".join(list(state['facts'].keys()))
         ))
         
-
-
 def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
+    """Runs the code in the code interpreter and potentially stores the result in memory."""
+
+    # pass the code thru another LLM with more detailed information and request changes
+    more_info_msg = HumanMessage(content="""
+        Currently the Python code you have is: {code}
+       
+        To access a memory variable, here's the syntax:
+        - tmp_dict = pickle.load(open('tmp/memory.pkl', 'rb'))
+        - tmp_dict['variable_name']
+
+        To store a result in memory, here's the syntax:
+        - tmp_dict['variable_name'] = result
+        - pickle.dump(tmp_dict, open('tmp/memory.pkl', 'wb'))
+       
+       Here are the packages you can use: [pandas, numpy, scikit-learn]
+       Here are the facts you have: {facts_kv_pairs}
+
+       Please rewrite the code factoring the above information to guide you towards the user's query: {user_query}
+       RETURN ONLY THE CODE AS A STRING
+    """
+    )
+
+    temp = state['messages']
+    temp.append(more_info_msg)
+    result = chat.invoke(temp)
+    state['messages'].pop(len(state['messages']) - 1)
+    state['messages'].append(AIMessage(content=result.content.strip()))
+
+    # save the code in a python file (codespace.py)
+    with open(state['code_file'], 'w') as f:
+        f.write(result.content.strip())
+    # run code via subprocess and running docker container
+    out, err = cli_kaggle_docker("python " + state['code_file'])
+    # grab the output/findings of the code and store in message history
+
+    # return the state
+    return state
+
+
+def idk(state: CodeInterpreterState) -> CodeInterpreterState:
     """Runs the code in the code interpreter."""
 
     # find the files from the kaggle dataset and choose the best one
@@ -90,37 +125,24 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
 
     """
     There's a couple things to handle here:
-
     - We want to store the directory structure of the kaggle dataset, for future retrieval
-    - we
     """
-    
-
     # df = pd.read_csv(files[0])
     # print(df.head())
-
     # download the dataset
     # kaggle datasets download -p kaggle_file --unzip juhibhojani/house-price
-
     # preset a couple memory variables e.g. pyspark_df
     # df = pd.read_csv("kaggle_file/house_prices.csv")
-    
-
     # generate the code
-
     # write the code to a tmp file
-
     # run a subprocess from the docker container
-
     # add the result to the messages
-
     # return the state
     return state
 
 
 
 # # TESTING
-
 run_code(
     {
         'messages': [],

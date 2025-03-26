@@ -3,19 +3,16 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json
-from langgraph.graph import MessagesState, START, END, StateGraph
-from langchain_core.tools import tool
-from langchain_openai.chat_models import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 import subprocess
 from typing_extensions import TypedDict
 from prompts import kaggle_api_search_prompt, db_finder_plan_search_prompt, db_finder_loop_prompt    
+from main import chat
 
 
-chat = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
 
 class DBFinderState(TypedDict):
-    messages: list[MessagesState]
+    messages: list[BaseMessage]
     query: str
     temp: dict
     loop_results: list[str]
