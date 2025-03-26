@@ -4,7 +4,7 @@ from typing_extensions import TypedDict
 from langgraph.graph import MessagesState
 from langchain_openai.chat_models import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
-from agents.db_finder import cli_kaggle_docker
+from db_finder import cli_kaggle_docker
 import pickle
 import pandas as pd
 
@@ -29,10 +29,15 @@ def get_memory_variables(state: CodeInterpreterState) -> CodeInterpreterState:
 
 def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
     """Runs the code in the code interpreter."""
-    
-    # kaggle datasets download -p kaggle_file --unzip  juhibhojani/house-price
+
+    # find the files from the kaggle dataset and choose the best one
+
+    # download the dataset
+    # kaggle datasets download -p kaggle_file --unzip juhibhojani/house-price
+
     # preset a couple memory variables e.g. pyspark_df
     df = pd.read_csv("kaggle_file/house_prices.csv")
+    
 
     # generate the code
 

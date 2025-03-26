@@ -178,11 +178,11 @@ def run_kaggle_api_search(state: DBFinderState) -> str:
 
 # # TESTING
 
-agentic_loop(
-    {
-        'messages': [],
-        'query': 'house prices in Canada',
-        'temp': {},
-        'loop_results': []
-    }
-) 
+# agentic_loop(
+#     {
+#         'messages': [],
+#         'query': 'house prices in Canada',
+#         'temp': {},
+#         'loop_results': []
+#     }
+# ) 

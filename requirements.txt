@@ -1,8 +1,8 @@
+numpy
 kaggle
 kagglehub
 kagglehub[pandas-datasets]
 docker
-pyspark
 langchain
 langchain-openai
 langgraph
