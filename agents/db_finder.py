@@ -21,6 +21,25 @@ class DBFinderState(TypedDict):
     loop_results: list[str]
 
 
+def cli_kaggle_docker(command: str) -> str:
+    """
+    This function is used to run the kaggle api in the custom docker container.
+    """
+
+    # set the command as an env var to be used by image when dockercompose is run
+    os.environ['KAGGLE_COMMAND'] = command
+
+    # Run docker-compose up
+    interpreter = subprocess.run(
+        ['docker-compose', '-f', 'dockercompose.yaml', 'up', '--build', '--remove-orphans', 'kaggle-api'],
+        env=os.environ,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    return interpreter.stdout, interpreter.stderr
+
+
 def agentic_loop(state: DBFinderState) -> str:
     """
     This function is used to run the agentic loop. It will select between running kaggle api search, altering the temp dict in the state, or selecting a dataset (END).
@@ -127,26 +146,15 @@ def run_kaggle_api_search(state: DBFinderState) -> str:
             count += 1
             if count > 3:
                 raise ValueError('Invalid command')
-    
-    
-    # set the query as an env var to be used by image when dockercompose is run
-    os.environ['KAGGLE_COMMAND'] = state['query']
 
     # execute the command in a subprocess in a docker container
     try:
-        # Run docker-compose up
-        interpreter = subprocess.run(
-            ['docker-compose', '-f', 'dockercompose.yaml', 'up', '--build', '--remove-orphans', 'kaggle-api'],
-            env=os.environ,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        print(interpreter.stdout.split("#6 DONE 0.0s")[1])
+        stdout, stderr = cli_kaggle_docker(state['query'])
+        print(stdout.split("#6 DONE 0.0s")[1])
     except subprocess.CalledProcessError as e:
         # create an SystemMessage with the error and return state
-        state['messages'].append(SystemMessage(content=f"Most likely the generated query syntax is not valid. Please try again. Here is the error: {str(e.stderr)}"))
-        print(f"Error running command: ", str(e.stderr))
+        state['messages'].append(SystemMessage(content=f"Most likely the generated query syntax is not valid. Please try again. Here is the error: {str(stderr)}"))
+        print(f"Error running command: ", str(stderr))
         return state
     finally:
         # Clean up: Stop and remove containers
@@ -156,8 +164,8 @@ def run_kaggle_api_search(state: DBFinderState) -> str:
         )
 
     # add the interpreter result to the messages
-    if interpreter.stdout is not None and interpreter.stdout.split("#6 DONE 0.0s")[1] is not None:
-        in_res = interpreter.stdout.split("#6 DONE 0.0s")[1]
+    if stdout is not None and stdout.split("#6 DONE 0.0s")[1] is not None:
+        in_res = stdout.split("#6 DONE 0.0s")[1]
         if "error" in in_res.lower():
             state['messages'].append(SystemMessage(content=f"There was an error in the command or the command was not executed. Here is the error: {in_res}"))
         else:
@@ -170,11 +178,11 @@ def run_kaggle_api_search(state: DBFinderState) -> str:
 
 # # TESTING
 
-# agentic_loop(
-#     {
-#         'messages': [],
-#         'query': 'house prices in Canada',
-#         'temp': {},
-#         'loop_results': []
-#     }
-# ) 
+agentic_loop(
+    {
+        'messages': [],
+        'query': 'house prices in Canada',
+        'temp': {},
+        'loop_results': []
+    }
+) 

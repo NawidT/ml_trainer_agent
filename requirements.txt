@@ -1,5 +1,6 @@
 kaggle
 kagglehub
+kagglehub[pandas-datasets]
 docker
 pyspark
 langchain
