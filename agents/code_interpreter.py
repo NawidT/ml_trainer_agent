@@ -5,7 +5,7 @@ import pickle
 from main import chat
 import subprocess
 import os
-
+import json
 class CodeInterpreterState(TypedDict):
     messages: list[BaseMessage]
     code: str
@@ -45,21 +45,20 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
             You are an assistant that helps your user get closer to {user_query}
             You have access to the following information:
             - memory: {keys_of_mem} (for storing and accessing Python objects)
-            - facts: {keys_of_facts} (for storing string-based information)
+            - facts: {kv_pairs_facts} (for storing string-based information)
             - previous messages above
 
             You can perform the following actions:
             - run: execute Python code and store results
-            - get_data: download and extract a Kaggle dataset
             - store_fact: save a string fact for later reference
             - end: return final answer (END)
 
             RETURN IN THE FOLLOWING FORMAT:
             {{
-                "action": "run" | "get_data" | "store_fact" | "end",
+                "action": "run" | "store_fact" | "end",
                 "details": {{
                     "code": "Python code to run" | null,
-                    "dataset": "Kaggle dataset reference" | null, 
+                    "code_goal": "Code goal to guide you towards" | null,
                     "fact": "Return in format key: value" | null,
                     "final_answer": "Answer to return" | null
                 }},
@@ -68,8 +67,44 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
         """.format(
             user_query=state['user_query'],
             keys_of_mem=get_memory_keys(state),
-            keys_of_facts= ", ".join(list(state['facts'].keys()))
+            kv_pairs_facts= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()])
         ))
+
+        temp = state['messages']
+        temp.append(central_msg)
+        result = chat.invoke(temp)
+
+        # check if the result is a valid json
+        try:
+            result_json = json.loads(result.content.strip())
+        except Exception as e:
+            print(result.content.strip())
+            state['messages'].append(SystemMessage(content=f"Invalid JSON. Please try again. Here is the error: {str(e)}"))
+            continue
+
+        # add the messages to the state in a custom way
+        state['messages'].append(HumanMessage(content="What is your action?"))
+        state['messages'].append(AIMessage(content=str(result_json['action']) + " : " + str(result_json['reason'])))
+        print(result_json['action'] + " : " + result_json['reason'])
+
+        if result_json['action'] == 'run':
+            state['code'] = result_json['details']['code']
+            state['code_goal'] = result_json['details']['code_goal']
+            state = run_code(state)
+        elif result_json['action'] == 'store_fact':
+            if result_json['details'] is not None and result_json['details']['fact'] is not None:
+                state['facts'][result_json['details']['fact'].split(':')[0]] = result_json['details']['fact'].split(':')[1]
+            else:
+                state['messages'].append(SystemMessage(content="Invalid fact. Please try again."))
+                continue
+        elif result_json['action'] == 'end':
+            if result_json['details'] is not None and result_json['details']['final_answer'] is not None:
+                return result_json['details']['final_answer']
+            else:
+                state['messages'].append(SystemMessage(content="Invalid final answer. Please try again."))
+                continue
+        
+        
         
 def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
     """Runs the code in the code interpreter and potentially stores the result in memory."""
@@ -89,13 +124,13 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
        Here are the packages you can use: [pandas, numpy, scikit-learn]
        Here are the facts you have: {facts_kv_pairs}
 
-       Please rewrite the code factoring the above information to guide you towards the user's query: {user_query}
+       Please rewrite the code factoring the above information to guide you towards the code goal: {code_goal}
        Make sure to return your outputs, you're running within a subprocess. Add print statements in your code.
        RETURN ONLY THE CODE AS A STRING
     """.format(
         code=state['code'],
         facts_kv_pairs= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
-        user_query=state['user_query'],
+        code_goal=state['code_goal'],
         memory_location=state['memory_location']
     ))
 
@@ -125,15 +160,24 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
         text=True,
         check=True
     )
-    out = interpreter.stdout
-    err = interpreter.stderr
+    out, err = interpreter.stdout, interpreter.stderr
+    out = parse_subprocess_output(out, "code-interpreter")
     print(out)
-    # # grab the output/findings of the code and store in message history
-    # state['messages'].append(AIMessage(content="Here is the output of the code: " + out))
+    
+    # grab the output/findings of the code and store in message history
+    state['messages'].append(AIMessage(content="Here is the output of the code: " + out))
 
-    # # return the state
-    # return state
+    # return the state
+    return state
 
+def parse_subprocess_output(output: str, compose_service : str) -> str:
+    """Parses the output of the subprocess and returns the output of the code."""
+    docker_compose_file = "ml_trainer_agent-{service}-1".format(service=compose_service)
+    files = output.split("Attaching to " + docker_compose_file)[1].split("\n")
+    files = [file.split("|")[1].strip() if file.startswith(docker_compose_file + "  |") else file 
+             for file in files 
+             if "exited" not in file and file != ""]
+    return "\n".join(files)
 
 def idk(state: CodeInterpreterState) -> CodeInterpreterState:
     """Runs the code in the code interpreter."""
@@ -167,14 +211,15 @@ def idk(state: CodeInterpreterState) -> CodeInterpreterState:
 
 
 # # TESTING
-run_code(
+agentic_loop(
     {
         'messages': [],
         'code': '',
         'kaggle_file': 'marusagar/hand-gesture-detection-system',
-        'user_query': '''Generate me a 20-list of house prices in Qatar and tell me which area has the highest house prices''',
+        'user_query': '''Generate me a 20-list of house prices in Qatar and tell me which area has the highest house prices. Store the dataframe in memory''',
         'facts': {},
         'memory_location': 'tmp/memory.pkl', # use relative path since both in same directory (tmp)
-        'code_file': 'tmp/codespace.py'
+        'code_file': 'tmp/codespace.py',
+        'code_goal': ''
     }
 )

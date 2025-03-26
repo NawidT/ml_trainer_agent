@@ -1,39 +1,27 @@
 
 import pandas as pd
-import numpy as np
 import pickle
 
-# Load previous memory or initialize a new dictionary
-tmp_dict = {}
-try:
-    tmp_dict = pickle.load(open('tmp/memory.pkl', 'rb'))
-except FileNotFoundError:
-    print("Memory file not found. Initializing a new memory.")
+# Creating a sample dataframe to represent house prices in different areas of Qatar
+area_names = ['Doha', 'Al Wakrah', 'Al Khor', 'Lusail', 'Umm Salal', 'Al Rayyan', 
+              'Madinat ash Shamal', 'Al Daayen', 'Al Sheehaniya', 'Al Ghuwairiya', 
+              'Qatar University', 'Al Wakif', 'The Pearl', 'West Bay', 'Mushreib', 
+              'Salwa', 'Industrial Area', 'Al Hilal', 'Al Jazeera', 'Aspire']
 
-# Generate a list of 20 random house prices in Qatar
-np.random.seed(42)  # For reproducibility
-house_prices = np.random.randint(200000, 1000000, size=20)
-areas = ['Doha', 'Al Wakrah', 'Lusail', 'Al Rayyan', 'Madinat ash Shamal', 
-         'Umm Salal', 'Al Khor', 'Dukhan', 'Al Dhakira', 'Umm Salal Ali', 
-         'Wakif', 'Al Gharrafa', 'Mushayrib', 'The Pearl', 'West Bay', 
-         'Corniche', 'Al Sadd', 'Salwa', 'Qatar University', 'Al Muraikh']
+house_prices = [1200000, 950000, 800000, 2100000, 700000, 1100000, 
+                650000, 600000, 750000, 850000, 900000, 950000, 
+                2400000, 3200000, 2800000, 2000000, 500000, 400000, 
+                450000, 500000, 600000]
 
-# Create a DataFrame for better handling
-df = pd.DataFrame({
-    'Area': areas[:20],
-    'Price': house_prices
-})
+# Creating the DataFrame
+data = {'Area': area_names, 'Price': house_prices}
+house_prices_df = pd.DataFrame(data)
+print(house_prices_df)
 
-# Find the area with the highest house price
-highest_price_row = df.loc[df['Price'].idxmax()]
-highest_price_area = highest_price_row['Area']
-highest_price_value = highest_price_row['Price']
+# Find the area with the highest price
+highest_price_area = house_prices_df.loc[house_prices_df['Price'].idxmax()]
+print("The area with the highest price is:", highest_price_area)
 
-# Print the results
-print("Generated House Prices in Qatar:")
-print(df)
-print(f"The area with the highest house price is {highest_price_area} with a price of {highest_price_value}.")
-
-# Store the results in memory
-tmp_dict['house_prices'] = df.to_dict(orient='records')
+# Store the DataFrame in memory
+tmp_dict = {'house_prices_df': house_prices_df}
 pickle.dump(tmp_dict, open('tmp/memory.pkl', 'wb'))

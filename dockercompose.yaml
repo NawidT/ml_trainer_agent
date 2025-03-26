@@ -13,4 +13,7 @@ services:
     build:
       context: .
       dockerfile: docker/code_inter.dockerfile
+    volumes:
+      - ./tmp:/app/tmp  # Mount the tmp directory to persist changes
+    working_dir: /app
     
