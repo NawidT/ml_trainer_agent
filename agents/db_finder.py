@@ -25,7 +25,6 @@ def cli_kaggle_docker(command: str) -> str:
     """
     This function is used to run the kaggle api in the custom docker container.
     """
-
     # set the command as an env var to be used by image when dockercompose is run
     os.environ['KAGGLE_COMMAND'] = command
 
@@ -40,7 +39,7 @@ def cli_kaggle_docker(command: str) -> str:
     return interpreter.stdout, interpreter.stderr
 
 
-def agentic_loop(state: DBFinderState) -> str:
+def agentic_loop(state: DBFinderState) -> DBFinderState:
     """
     This function is used to run the agentic loop. It will select between running kaggle api search, altering the temp dict in the state, or selecting a dataset (END).
     """
@@ -93,7 +92,7 @@ def agentic_loop(state: DBFinderState) -> str:
             state = plan(state)
         elif result_json['action'] == 'search':
             state['query'] = result_json['details']
-            state = run_kaggle_api_search(state)
+            state = run_kaggle_api(state, kaggle_api_search_prompt)
         elif result_json['action'] == 'alter':
             state['temp'][result_json['details'].split(':')[0]] = result_json['details'].split(':')[1]
             print("temp: " + str(state['temp']))
@@ -105,7 +104,7 @@ def agentic_loop(state: DBFinderState) -> str:
             state['messages'].append(SystemMessage(content=f"Invalid action. Please try again. Here is the error: {str(e)}"))
             continue
 
-def plan(state: DBFinderState) -> str:
+def plan(state: DBFinderState) -> DBFinderState:
     """Plans the search for a dataset."""
     
     plan_msg = HumanMessage(content=
@@ -121,24 +120,25 @@ def plan(state: DBFinderState) -> str:
 
     return state
 
-def run_kaggle_api_search(state: DBFinderState) -> str:
-    """Searches the Kaggle API via the CLI for datasets matching the user's query."""
+def run_kaggle_api(state: dict, prompt: str) -> dict:
+    """Runs the kaggle api search command."""
 
     # generate the kaggle api search command to be used kaggle datasets -s {query}
     instructions = HumanMessage(content=
-        kaggle_api_search_prompt.format(query=state['query'])  
+        prompt.format(query=state['query'])  
     )
     # temp is created to not add the instuction to messages everytime LLM is called
     temp = state['messages']
     temp.append(instructions)
     result = chat.invoke(temp)
     state['messages'].pop(len(state['messages']) - 1)
-    state['messages'].append(AIMessage(content="generated command:" + result.content.strip()))
-    print("generated command: " + result.content.strip())
+    generated_command = result.content.strip()
+    state['messages'].append(AIMessage(content="generated command:" + generated_command))
+    print("generated command: " + generated_command)
     count = 0
     while True:
         if result.content is not None:
-            state['query'] = result.content.strip()
+            generated_command = result.content.strip()
             break
         else:
             # print(result.content.strip())
@@ -149,7 +149,7 @@ def run_kaggle_api_search(state: DBFinderState) -> str:
 
     # execute the command in a subprocess in a docker container
     try:
-        stdout, stderr = cli_kaggle_docker(state['query'])
+        stdout, stderr = cli_kaggle_docker(generated_command)
         print(stdout.split("#6 DONE 0.0s")[1])
     except subprocess.CalledProcessError as e:
         # create an SystemMessage with the error and return state
