@@ -1,4 +1,5 @@
 kaggle
+kagglehub
 docker
 pyspark
 langchain

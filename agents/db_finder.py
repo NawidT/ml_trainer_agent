@@ -2,7 +2,6 @@
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-
 import json
 from langgraph.graph import MessagesState, START, END, StateGraph
 from langchain_core.tools import tool
@@ -137,7 +136,7 @@ def run_kaggle_api_search(state: DBFinderState) -> str:
     try:
         # Run docker-compose up
         interpreter = subprocess.run(
-            ['docker-compose', '-f', 'dockercompose.yaml', 'up', '--build', '--remove-orphans'],
+            ['docker-compose', '-f', 'dockercompose.yaml', 'up', '--build', '--remove-orphans', 'kaggle-api'],
             env=os.environ,
             capture_output=True,
             text=True,
