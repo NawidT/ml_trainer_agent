@@ -1,10 +1,10 @@
-from kagglehub import KaggleDatasetAdapter
 from typing_extensions import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from db_finder import cli_kaggle_docker
 import pickle
-import pandas as pd
 from main import chat
+import subprocess
+import os
 
 class CodeInterpreterState(TypedDict):
     messages: list[BaseMessage]
@@ -79,36 +79,60 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
         Currently the Python code you have is: {code}
        
         To access a memory variable, here's the syntax:
-        - tmp_dict = pickle.load(open('tmp/memory.pkl', 'rb'))
+        - tmp_dict = pickle.load(open('{memory_location}', 'rb'))
         - tmp_dict['variable_name']
 
         To store a result in memory, here's the syntax:
         - tmp_dict['variable_name'] = result
-        - pickle.dump(tmp_dict, open('tmp/memory.pkl', 'wb'))
+        - pickle.dump(tmp_dict, open('{memory_location}', 'wb'))
        
        Here are the packages you can use: [pandas, numpy, scikit-learn]
        Here are the facts you have: {facts_kv_pairs}
 
        Please rewrite the code factoring the above information to guide you towards the user's query: {user_query}
+       Make sure to return your outputs, you're running within a subprocess. Add print statements in your code.
        RETURN ONLY THE CODE AS A STRING
-    """
-    )
+    """.format(
+        code=state['code'],
+        facts_kv_pairs= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
+        user_query=state['user_query'],
+        memory_location=state['memory_location']
+    ))
 
     temp = state['messages']
     temp.append(more_info_msg)
     result = chat.invoke(temp)
+    generated_code = result.content.strip()
     state['messages'].pop(len(state['messages']) - 1)
-    state['messages'].append(AIMessage(content=result.content.strip()))
+    state['messages'].append(AIMessage(content=generated_code))
+
+    if generated_code.startswith("```python"):
+        generated_code = generated_code.replace("```python", "", 1)
+    if generated_code.endswith("```"):
+        generated_code = generated_code.rsplit("```", 1)[0]
+
+    print(generated_code)
 
     # save the code in a python file (codespace.py)
     with open(state['code_file'], 'w') as f:
-        f.write(result.content.strip())
-    # run code via subprocess and running docker container
-    out, err = cli_kaggle_docker("python " + state['code_file'])
-    # grab the output/findings of the code and store in message history
+        f.write(generated_code)
 
-    # return the state
-    return state
+    # run code via subprocess and running docker container
+    interpreter = subprocess.run(
+        ['docker-compose', '-f', 'dockercompose.yaml', 'up', '--build', '--remove-orphans', 'code-interpreter'],
+        env=os.environ,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    out = interpreter.stdout
+    err = interpreter.stderr
+    print(out)
+    # # grab the output/findings of the code and store in message history
+    # state['messages'].append(AIMessage(content="Here is the output of the code: " + out))
+
+    # # return the state
+    # return state
 
 
 def idk(state: CodeInterpreterState) -> CodeInterpreterState:
@@ -146,7 +170,11 @@ def idk(state: CodeInterpreterState) -> CodeInterpreterState:
 run_code(
     {
         'messages': [],
-        'code': 'print("hello")',
-        'kaggle_file': 'marusagar/hand-gesture-detection-system'
+        'code': '',
+        'kaggle_file': 'marusagar/hand-gesture-detection-system',
+        'user_query': '''Generate me a 20-list of house prices in Qatar and tell me which area has the highest house prices''',
+        'facts': {},
+        'memory_location': 'tmp/memory.pkl', # use relative path since both in same directory (tmp)
+        'code_file': 'tmp/codespace.py'
     }
 )

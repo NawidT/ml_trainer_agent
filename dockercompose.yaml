@@ -13,5 +13,4 @@ services:
     build:
       context: .
       dockerfile: docker/code_inter.dockerfile
-    command: python code_interpreter.py
     
