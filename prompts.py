@@ -4,6 +4,8 @@ db_finder_loop_prompt =  """
     You are a helpful assistant that can help with a task of finding a dataset of kaggle based on the user's query {query}. 
     {plan_once}. Be optimal and efficient. 
 
+
+
     You can do the following actions:
     - plan: plan the search for a dataset
     - search: use the kaggle api to narrow the search for a dataset
@@ -48,7 +50,7 @@ db_finder_plan_search_prompt = """
         - the user's query: {query}
         - the temp dict: {temp}
 
-        You also have access to previous messages. Use this space to write your thoughts. Return in plain english.
+        You also have access to previous messages. Use this space to write your thoughts. Return in plain english and keep it short.
         """
 
 code_inter_init_prompt = """
@@ -58,45 +60,58 @@ code_inter_init_prompt = """
             - facts: {kv_pairs_facts} (for storing string-based information)
             - previous messages above
 
+            {plan}
+
             You can perform the following actions:
             - run: execute Python code or store something in memory
+            - kaggle_api: use the kaggle api to get data
             - store_fact: save a string fact for later reference
-            - end: return final answer (END)
+            - plan: plan your thoughts
+            - end: return final answer or why you can't do this task (END)
 
             RETURN IN THE FOLLOWING FORMAT:
             {{
-                "action": "run" | "store_fact" | "end",
+                "action": "run" | "kaggle_api" | "store_fact" | "plan" | "end",
                 "details": {{
                     "code": "Python code to run" | null,
                     "code_goal": "Code goal to guide you towards" | null,
+                    "plan": "plan for the search" | null,
                     "fact": "fact to be stored and it's unique key" | null,
+                    "kaggle_api": "what to do using kaggle api" | null,
                     "final_answer": "Answer to return" | null
                 }},
                 "reason": "Explanation for taking this action"
             }}
         """
+
 code_inter_loop_prompt = """
             Based on the above results, are you getting closer to {user_query}?
             You also have access to the following information:
             - memory: {keys_of_mem}
             - facts: {kv_pairs_facts}
 
+            The only dataset you have access to is: {dataset}
+
+            {plan}
+
             What's the next best step?
 
             RETURN IN THE FOLLOWING FORMAT:
             {{
-                "action": "run" | "store_fact" | "end",
+                "action": "run" | "kaggle_api" | "store_fact" | "plan" | "end",
                 "details": {{
                     "code": "Python code to run" | null,
                     "code_goal": "Code goal to guide you towards" | null,
+                    "plan": "plan for the search" | null,
                     "fact": "fact to be stored and it's unique key" | null,
-                    "final_answer": "Answer to return" | null
+                    "kaggle_api": "what to do using kaggle api" | null,
+                    "final_answer": "Answer to return or Why you can't do this task" | null
                 }},
                 "reason": "Explanation for taking this action"
             }}
         """
 
-code_inter_more_info = """
+code_inter_run_code = """
         Currently the Python code you have is: {code}
        
         To access a memory variable, here's the syntax:
@@ -111,6 +126,43 @@ code_inter_more_info = """
        Here are the facts you have: {facts_kv_pairs}
 
        Please rewrite the code factoring the above information to guide you towards the code goal: {code_goal}
-       Make sure to return your outputs, you're running within a subprocess. Add print statements in your code.
+       Add print statements in your code. Don't generate fake data.
        RETURN ONLY THE CODE AS A STRING
     """
+
+code_inter_kaggle_api = """
+Based on the task ({task}) and the above previous messages, generate the kaggle api command. Here's how to do it.
+The dataset we want to use is: {dataset}
+
+USAGE OF KAGGLE DATASETS:
+usage: kaggle datasets [-h] (list | files | download) ...
+options:
+  -h, --help            show this help message and exit
+commands:
+  list                List/search for available datasets
+  files               Show dataset files
+  download            Download dataset files
+
+HOW TO USE KAGGLE DATASETS LIST:
+usage: kaggle datasets list [-h] [--sort-by SORT_BY] [-s SEARCH] [-p PAGE] [-v] [--max-size MAX_SIZE]
+options:
+  --sort-by SORT_BY     Sort list results. Default is 'hottest'. Valid options are 'hottest', 'votes', 'updated', and 'active'
+  -s, --search SEARCH   Term(s) to search for
+  -p, --page PAGE       Page number for results paging. Page size is 20 by default
+  -v, --csv             Print results in CSV format (if not set print in table format)
+  --max-size MAX_SIZE   Specify the maximum size of the dataset to return (bytes)
+
+HOW TO USE KAGGLE DATASETS FILES:
+usage: kaggle datasets files [-h] [-v] [--page-size PAGE_SIZE] [dataset]
+options:
+  dataset               Dataset URL suffix in format <owner>/<dataset-name>
+  --page-size PAGE_SIZE Number of items to show on a page. Default size is 20, max is 200
+
+HOW TO USE KAGGLE DATASETS DOWNLOAD:
+usage: kaggle datasets download [-h] [-f FILE_NAME] [-p PATH] [--unzip] [dataset]
+options:
+  -p, --path PATH       Folder where downloaded. Use the tmp folder to store the files.
+  --unzip               Unzip the downloaded file. Will delete the zip file when completed.
+
+RETURN JUST THE COMMAND AS A STRING
+"""

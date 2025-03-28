@@ -1,21 +1,26 @@
-from typing_extensions import TypedDict
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
-from db_finder import cli_kaggle_docker
-import pickle
-from main import chat
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+
 import subprocess
 import os
 import json
-from prompts import code_inter_more_info, code_inter_init_prompt, code_inter_loop_prompt
+import pickle
+
+from typing_extensions import TypedDict
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
+from main import chat, cli_kaggle_docker, parse_subprocess_output
+from prompts import code_inter_run_code, code_inter_init_prompt, code_inter_loop_prompt, code_inter_kaggle_api
 
 class CodeInterpreterState(TypedDict):
     messages: list[BaseMessage]
     code: str
-    kaggle_file: str
+    kaggle_dataset: str
     memory_location: str = "tmp/memory.pkl" # this stores memory in pickle file, can be accessed by generated subprocess
     facts: dict[str, str] = {}
     code_file: str = "codespace.py"
     query: str
+    plan: str = ""
 
 def get_memory_keys(state: CodeInterpreterState) -> str:
     """Grabs the memory variables from the pickle file."""
@@ -47,7 +52,9 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
                     if len(state['messages']) == 0 else code_inter_loop_prompt).format(
             user_query=state['user_query'],
             keys_of_mem=get_memory_keys(state),
-            kv_pairs_facts= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()])
+            kv_pairs_facts= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
+            plan=state['plan'],
+            dataset=state['kaggle_dataset']
         ))
 
         temp = state['messages']
@@ -70,13 +77,17 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
         if result_json['action'] == 'run':
             state['code'] = result_json['details']['code']
             state['code_goal'] = result_json['details']['code_goal']
-            state = run_code(state)
+            state = run_code(state, state['code_goal'])
         elif result_json['action'] == 'store_fact':
             if result_json['details'] is not None and result_json['details']['fact'] is not None and type(result_json['details']['fact']) == str:
                 state = store_fact(state, result_json['details']['fact'])
             else:
                 state['messages'].append(SystemMessage(content="Invalid fact. Please try again."))
                 continue
+        elif result_json['action'] == 'kaggle_api':
+            state = run_kaggle_api(state, result_json['details']['kaggle_api'])
+        elif result_json['action'] == 'plan':
+            state = plan(state, result_json['details']['plan'])
         elif result_json['action'] == 'end':
             if result_json['details'] is not None and result_json['details']['final_answer'] is not None:
                 return result_json['details']['final_answer']
@@ -84,16 +95,32 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
                 state['messages'].append(SystemMessage(content="Invalid final answer. Please try again."))
                 continue
         
+def plan(state: CodeInterpreterState, plan: str) -> CodeInterpreterState:
+    """Plans the search for the kaggle dataset."""
+
+    # use LLM to generate a plan for the search
+    msg = HumanMessage(content="Based on the above messages, use this space to write a short plan for your thoughts to proceed with the next steps.")
+    temp = state['messages']
+    temp.append(msg)
+    result = chat.invoke(temp)
+    state['messages'].pop(len(state['messages']) - 1)
+    state['messages'].append(AIMessage(content=result.content.strip()))
+
+    # add the plan to the state and it will be used in future loop messages until plan changes
+    state['plan'] = result.content.strip()
+
+    # return the state
+    return state
         
         
-def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
+def run_code(state: CodeInterpreterState, code_goal: str) -> CodeInterpreterState:
     """Runs the code in the code interpreter and potentially stores the result in memory."""
 
     # pass the code thru another LLM with more detailed information and request changes
-    more_info_msg = HumanMessage(content=code_inter_more_info.format(
+    more_info_msg = HumanMessage(content=code_inter_run_code.format(
         code=state['code'],
         facts_kv_pairs= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
-        code_goal=state['code_goal'],
+        code_goal=code_goal,
         memory_location=state['memory_location']
     ))
 
@@ -123,15 +150,48 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
         text=True,
         check=True
     )
-    out, err = interpreter.stdout, interpreter.stderr
+    out, _ = interpreter.stdout, interpreter.stderr
     out = parse_subprocess_output(out, "code-interpreter")
     print(out)
 
     # grab the output/findings of the code and store in message history
-    state['messages'].append(AIMessage(content="Here is the output of the code: " + out))
+    state['messages'].append(SystemMessage(content="Here is the output of the code: " + out))
 
     # return the state
     return state
+
+def run_kaggle_api(state: CodeInterpreterState, task: str) -> CodeInterpreterState:
+    """Runs the kaggle api command in the code interpreter."""
+
+    # use LLM to generate kaggle command based on the task
+    msg = HumanMessage(content=code_inter_kaggle_api.format(
+        task=task,
+        dataset=state['kaggle_dataset']
+    ))
+
+    temp = state['messages']
+    temp.append(msg)
+    result = chat.invoke(temp)
+    state['messages'].pop(len(state['messages']) - 1)
+    kaggle_api_command = result.content.strip()
+    print("kaggle api command: ", kaggle_api_command)
+
+    # run the kaggle api command
+    out, _ = cli_kaggle_docker(kaggle_api_command)
+
+    # parse the output of the kaggle api command
+    out = parse_subprocess_output(out, "kaggle-api")
+    print(out)
+
+    # store the output in the message history
+    if "error" in out.lower():
+        state['messages'].append(SystemMessage(content="Here is the error. Use this to guide changes to the command: " + out))
+    else:
+        state['messages'].append(SystemMessage(content="Here is the output of the command: " + out))
+
+    # return the state
+    return state
+
 
 def store_fact(state: CodeInterpreterState, fact: str) -> CodeInterpreterState:
     """Stores the fact in the state."""
@@ -149,58 +209,21 @@ def store_fact(state: CodeInterpreterState, fact: str) -> CodeInterpreterState:
 
     # add the fact to the state
     state['facts'][kv_pair.split(':')[0]] = kv_pair.split(':')[1]
+
+    # show all the facts
+    print(state['facts'])
     return state
-
-def parse_subprocess_output(output: str, compose_service : str) -> str:
-    """Parses the output of the subprocess and returns the output of the code."""
-    docker_compose_file = "ml_trainer_agent-{service}-1".format(service=compose_service)
-    files = output.split("Attaching to " + docker_compose_file)[1].split("\n")
-    files = [file.split("|")[1].strip() if file.startswith(docker_compose_file + "  |") else file 
-             for file in files 
-             if "exited" not in file and file != ""]
-    return "\n".join(files)
-
-def idk(state: CodeInterpreterState) -> CodeInterpreterState:
-    """Runs the code in the code interpreter."""
-
-    # find the files from the kaggle dataset and choose the best one
-    out, err = cli_kaggle_docker("kaggle datasets files -v " + state['kaggle_file'])
-    
-    files = out.split("Attaching to ml_trainer_agent-kaggle-api-1")[1].split("\n")
-    files = [file.split("|")[1].strip() if file.startswith("ml_trainer_agent-kaggle-api-1  |") else file 
-             for file in files 
-             if "exited" not in file and file != ""]
-    print(files)
-
-    """
-    There's a couple things to handle here:
-    - We want to store the directory structure of the kaggle dataset, for future retrieval
-    """
-    # df = pd.read_csv(files[0])
-    # print(df.head())
-    # download the dataset
-    # kaggle datasets download -p kaggle_file --unzip juhibhojani/house-price
-    # preset a couple memory variables e.g. pyspark_df
-    # df = pd.read_csv("kaggle_file/house_prices.csv")
-    # generate the code
-    # write the code to a tmp file
-    # run a subprocess from the docker container
-    # add the result to the messages
-    # return the state
-    return state
-
-
 
 # # TESTING
 agentic_loop(
     {
         'messages': [],
         'code': '',
-        'kaggle_file': 'marusagar/hand-gesture-detection-system',
-        'user_query': '''Generate me a 20-list of house prices in Qatar and tell me which area has the highest house prices. Store the dataframe in memory''',
+        'kaggle_dataset': 'juhibhojani/house-price',
+        'user_query': '''Find me a dataset of house prices in UAE and tell me which area has the highest house prices. Store the dataframe in memory''',
         'facts': {},
         'memory_location': 'tmp/memory.pkl', # use relative path since both in same directory (tmp)
         'code_file': 'tmp/codespace.py',
-        'code_goal': ''
+        'plan': ''
     }
 )

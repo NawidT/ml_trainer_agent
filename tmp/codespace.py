@@ -2,29 +2,36 @@
 import pandas as pd
 import pickle
 
-# Create a list of house prices and corresponding areas in Qatar
-house_prices_data = {
-    'Area': ['Doha', 'Al Rayyan', 'Lusail', 'West Bay', 'The Pearl-Qatar', 'Al Wakrah', 'Al Khor', 'Mushereib', 
-             'Al Sadd', 'Education City', 'Barwa City', 'Villaggio', 'Al Duhail', 'Qatar University', 
-             'Hilal', 'Al Gharaffa', 'Salwa', 'Al Mashaf', 'Qatar Sports Club', 'Al Hilal'],
-    'Price (QAR)': [3500000, 2500000, 5000000, 4200000, 6000000, 1800000, 2200000, 1400000, 
-                     2000000, 2300000, 3600000, 2800000, 1800000, 1700000, 1500000, 3000000, 
-                     1900000, 2200000, 2100000, 2800000]  # Correct lengths to match
-}
+# Load stored data (if any)
+try:
+    tmp_dict = pickle.load(open('tmp/memory.pkl', 'rb'))
+    print("Loaded data from memory successfully.")
+except FileNotFoundError:
+    print("No previous data found, initializing an empty dictionary.")
+    tmp_dict = {}
 
-# Creating the DataFrame
-house_prices_df = pd.DataFrame(house_prices_data)
-print("House Prices DataFrame created successfully.")
-print(house_prices_df)
+# Step 1: Use a sample URL for the dataset (replace with an actual dataset source later)
+url = 'https://www.example.com/data/uae-house-prices.csv'  # Modify this with a valid dataset URL
 
-# Identify the area with the highest house prices
-highest_price_area = house_prices_df.loc[house_prices_df['Price (QAR)'].idxmax()]
-print("\nArea with the highest house prices:")
-print(highest_price_area)
+# Attempt to load the dataset into a DataFrame
+try:
+    house_prices_df = pd.read_csv(url)  # This command may fail if the URL is invalid.
+    print("Dataset loaded into DataFrame successfully.")
 
-# Store results in memory
-memory_dict = {}
-memory_dict['house_prices_df'] = house_prices_df
-memory_dict['highest_price_area'] = highest_price_area
-pickle.dump(memory_dict, open('tmp/memory.pkl', 'wb'))
-print("\nData stored in memory successfully.")
+    # Store the DataFrame in memory
+    tmp_dict['house_prices_df'] = house_prices_df
+    print("DataFrame stored in memory successfully.")
+
+    # Analyzing which area has the highest house prices
+    if 'price' in house_prices_df.columns and 'area' in house_prices_df.columns:
+        highest_price_area = house_prices_df.loc[house_prices_df['price'].idxmax(), 'area']
+        tmp_dict['highest_price_area'] = highest_price_area
+        print(f"The area with the highest house price is: {highest_price_area}")
+    else:
+        print("Required columns for analysis not found in the DataFrame.")
+
+    # Save the updated memory
+    pickle.dump(tmp_dict, open('tmp/memory.pkl', 'wb'))
+    print("Updated memory stored successfully.")
+except Exception as e:
+    print(f"An error occurred while processing: {e}")

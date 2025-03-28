@@ -7,33 +7,16 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, Base
 import subprocess
 from typing_extensions import TypedDict
 from prompts import kaggle_api_search_prompt, db_finder_plan_search_prompt, db_finder_loop_prompt    
-from main import chat
-
+from main import chat, cli_kaggle_docker, parse_subprocess_output
 
 
 class DBFinderState(TypedDict):
-    messages: list[BaseMessage]
+    messages: list[BaseMessage] = []
     query: str
     temp: dict
-    loop_results: list[str]
+    loop_results: list[str] = []
+    plan: str = ""
 
-
-def cli_kaggle_docker(command: str) -> str:
-    """
-    This function is used to run the kaggle api in the custom docker container.
-    """
-    # set the command as an env var to be used by image when dockercompose is run
-    os.environ['KAGGLE_COMMAND'] = command
-
-    # Run docker-compose up
-    interpreter = subprocess.run(
-        ['docker-compose', '-f', 'dockercompose.yaml', 'up', '--build', '--remove-orphans', 'kaggle-api'],
-        env=os.environ,
-        capture_output=True,
-        text=True,
-        check=True
-    )
-    return interpreter.stdout, interpreter.stderr
 
 
 def agentic_loop(state: DBFinderState) -> DBFinderState:
@@ -51,9 +34,10 @@ def agentic_loop(state: DBFinderState) -> DBFinderState:
         central_msg = HumanMessage(content=
             db_finder_loop_prompt.format(
                 query=state['query'], 
-                plan_once="Be sure to plan your approach only once" if len(state['messages']) == 0 else "",
+                plan_once="Be sure to plan your approach only once" 
+                    if len(state['messages']) == 0 else "Here is your plan: " + state['plan'],
                 temp=" ".join([f"{k}: {v}" for k, v in state['temp'].items()]),
-                loop_stuck="You are stuck in a loop. Please try to change your action" if len(state['loop_results']) >= 2 and len(set(state['loop_results'][-3:])) == 1 else ""
+                loop_stuck="You are stuck in a loop. Please try to change your action" if len(state['loop_results']) >= 2 and len(set(state['loop_results'][-3:])) == 1 else "",
             )
         )
 
@@ -124,6 +108,7 @@ def run_kaggle_api(state: dict, prompt: str) -> dict:
     instructions = HumanMessage(content=
         prompt.format(query=state['query'])  
     )
+    
     # temp is created to not add the instuction to messages everytime LLM is called
     temp = state['messages']
     temp.append(instructions)
@@ -132,26 +117,15 @@ def run_kaggle_api(state: dict, prompt: str) -> dict:
     generated_command = result.content.strip()
     state['messages'].append(AIMessage(content="generated command:" + generated_command))
     print("generated command: " + generated_command)
-    count = 0
-    while True:
-        if result.content is not None:
-            generated_command = result.content.strip()
-            break
-        else:
-            # print(result.content.strip())
-            result = chat.invoke(temp)
-            count += 1
-            if count > 3:
-                raise ValueError('Invalid command')
 
     # execute the command in a subprocess in a docker container
     try:
-        stdout, stderr = cli_kaggle_docker(generated_command)
-        print(stdout.split("#6 DONE 0.0s")[1])
-    except subprocess.CalledProcessError as e:
+        stdout, _ = cli_kaggle_docker(generated_command)
+        parsed_stdout = parse_subprocess_output(stdout, "kaggle-api")
+    except Exception as e:
         # create an SystemMessage with the error and return state
-        state['messages'].append(SystemMessage(content=f"Most likely the generated query syntax is not valid. Please try again. Here is the error: {str(stderr)}"))
-        print(f"Error running command: ", str(stderr))
+        state['messages'].append(SystemMessage(content=f"Most likely the generated query syntax is not valid. Please try again. Here is the error: {str(e)}"))
+        print(f"Error running command: ", str(e))
         return state
     finally:
         # Clean up: Stop and remove containers
@@ -161,25 +135,20 @@ def run_kaggle_api(state: dict, prompt: str) -> dict:
         )
 
     # add the interpreter result to the messages
-    if stdout is not None and stdout.split("#6 DONE 0.0s")[1] is not None:
-        in_res = stdout.split("#6 DONE 0.0s")[1]
-        if "error" in in_res.lower():
-            state['messages'].append(SystemMessage(content=f"There was an error in the command or the command was not executed. Here is the error: {in_res}"))
-        else:
-            state['messages'].append(AIMessage(content=in_res))
-    else:
-        raise ValueError('No valid result from kaggle api search. There was an error in the command or the command was not executed.')
+    state['messages'].append(SystemMessage(content=f"Here is the output of the command: {parsed_stdout}"))
     
+    # return the state
     return state
 
 
-# # TESTING
+# TESTING
 
-# agentic_loop(
-#     {
-#         'messages': [],
-#         'query': 'house prices in Canada',
-#         'temp': {},
-#         'loop_results': []
-#     }
-# ) 
+agentic_loop(
+    {
+        'messages': [],
+        'query': 'Find me a dataset of house prices in UAE and tell me which area has the highest house prices. Store the dataframe in memorya',
+        'temp': {},
+        'loop_results': [],
+        'plan': ''
+    }
+) 
