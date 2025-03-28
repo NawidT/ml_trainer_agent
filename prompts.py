@@ -69,7 +69,7 @@ code_inter_init_prompt = """
                 "details": {{
                     "code": "Python code to run" | null,
                     "code_goal": "Code goal to guide you towards" | null,
-                    "fact": "Return in format key: value" | null,
+                    "fact": "fact to be stored and it's unique key" | null,
                     "final_answer": "Answer to return" | null
                 }},
                 "reason": "Explanation for taking this action"
@@ -89,7 +89,7 @@ code_inter_loop_prompt = """
                 "details": {{
                     "code": "Python code to run" | null,
                     "code_goal": "Code goal to guide you towards" | null,
-                    "fact": "Return as 'fact': 'value' " | null,
+                    "fact": "fact to be stored and it's unique key" | null,
                     "final_answer": "Answer to return" | null
                 }},
                 "reason": "Explanation for taking this action"

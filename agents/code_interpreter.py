@@ -72,8 +72,8 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
             state['code_goal'] = result_json['details']['code_goal']
             state = run_code(state)
         elif result_json['action'] == 'store_fact':
-            if result_json['details'] is not None and result_json['details']['fact'] is not None:
-                state['facts'][result_json['details']['fact'].split(':')[0]] = result_json['details']['fact'].split(':')[1]
+            if result_json['details'] is not None and result_json['details']['fact'] is not None and type(result_json['details']['fact']) == str:
+                state = store_fact(state, result_json['details']['fact'])
             else:
                 state['messages'].append(SystemMessage(content="Invalid fact. Please try again."))
                 continue
@@ -131,6 +131,24 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
     state['messages'].append(AIMessage(content="Here is the output of the code: " + out))
 
     # return the state
+    return state
+
+def store_fact(state: CodeInterpreterState, fact: str) -> CodeInterpreterState:
+    """Stores the fact in the state."""
+
+    # rewrite the fact string as a key:value pair
+    msg = HumanMessage(content=f"""Using the following information, convert the fact into a key:value pair. 
+                            fact: {fact}.
+                            Make sure the key is unique. Here are the existing keys: {state['facts'].keys()}.
+                            RETURN ONLY THE KEY:VALUE PAIR AS A STRING""")
+
+    result = chat.invoke([msg])
+
+    kv_pair = result.content.strip()
+    print(kv_pair)
+
+    # add the fact to the state
+    state['facts'][kv_pair.split(':')[0]] = kv_pair.split(':')[1]
     return state
 
 def parse_subprocess_output(output: str, compose_service : str) -> str:
