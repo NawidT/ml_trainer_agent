@@ -50,3 +50,67 @@ db_finder_plan_search_prompt = """
 
         You also have access to previous messages. Use this space to write your thoughts. Return in plain english.
         """
+
+code_inter_init_prompt = """
+            You are an assistant that helps your user get closer to {user_query}
+            You have access to the following information:
+            - memory: {keys_of_mem} (for storing and accessing Python objects)
+            - facts: {kv_pairs_facts} (for storing string-based information)
+            - previous messages above
+
+            You can perform the following actions:
+            - run: execute Python code or store something in memory
+            - store_fact: save a string fact for later reference
+            - end: return final answer (END)
+
+            RETURN IN THE FOLLOWING FORMAT:
+            {{
+                "action": "run" | "store_fact" | "end",
+                "details": {{
+                    "code": "Python code to run" | null,
+                    "code_goal": "Code goal to guide you towards" | null,
+                    "fact": "Return in format key: value" | null,
+                    "final_answer": "Answer to return" | null
+                }},
+                "reason": "Explanation for taking this action"
+            }}
+        """
+code_inter_loop_prompt = """
+            Based on the above results, are you getting closer to {user_query}?
+            You also have access to the following information:
+            - memory: {keys_of_mem}
+            - facts: {kv_pairs_facts}
+
+            What's the next best step?
+
+            RETURN IN THE FOLLOWING FORMAT:
+            {{
+                "action": "run" | "store_fact" | "end",
+                "details": {{
+                    "code": "Python code to run" | null,
+                    "code_goal": "Code goal to guide you towards" | null,
+                    "fact": "Return as 'fact': 'value' " | null,
+                    "final_answer": "Answer to return" | null
+                }},
+                "reason": "Explanation for taking this action"
+            }}
+        """
+
+code_inter_more_info = """
+        Currently the Python code you have is: {code}
+       
+        To access a memory variable, here's the syntax:
+        - tmp_dict = pickle.load(open('{memory_location}', 'rb'))
+        - tmp_dict['variable_name']
+
+        To store a result in memory, here's the syntax:
+        - tmp_dict['variable_name'] = result
+        - pickle.dump(tmp_dict, open('{memory_location}', 'wb'))
+       
+       Here are the packages you can use: [pandas, numpy, scikit-learn]
+       Here are the facts you have: {facts_kv_pairs}
+
+       Please rewrite the code factoring the above information to guide you towards the code goal: {code_goal}
+       Make sure to return your outputs, you're running within a subprocess. Add print statements in your code.
+       RETURN ONLY THE CODE AS A STRING
+    """

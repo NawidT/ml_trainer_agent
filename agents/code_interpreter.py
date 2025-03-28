@@ -6,6 +6,8 @@ from main import chat
 import subprocess
 import os
 import json
+from prompts import code_inter_more_info, code_inter_init_prompt, code_inter_loop_prompt
+
 class CodeInterpreterState(TypedDict):
     messages: list[BaseMessage]
     code: str
@@ -41,30 +43,8 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
     """
 
     while True:
-        central_msg = HumanMessage(content="""
-            You are an assistant that helps your user get closer to {user_query}
-            You have access to the following information:
-            - memory: {keys_of_mem} (for storing and accessing Python objects)
-            - facts: {kv_pairs_facts} (for storing string-based information)
-            - previous messages above
-
-            You can perform the following actions:
-            - run: execute Python code and store results
-            - store_fact: save a string fact for later reference
-            - end: return final answer (END)
-
-            RETURN IN THE FOLLOWING FORMAT:
-            {{
-                "action": "run" | "store_fact" | "end",
-                "details": {{
-                    "code": "Python code to run" | null,
-                    "code_goal": "Code goal to guide you towards" | null,
-                    "fact": "Return in format key: value" | null,
-                    "final_answer": "Answer to return" | null
-                }},
-                "reason": "Explanation for taking this action"
-            }}
-        """.format(
+        central_msg = HumanMessage(content=(code_inter_init_prompt 
+                    if len(state['messages']) == 0 else code_inter_loop_prompt).format(
             user_query=state['user_query'],
             keys_of_mem=get_memory_keys(state),
             kv_pairs_facts= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()])
@@ -110,24 +90,7 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
     """Runs the code in the code interpreter and potentially stores the result in memory."""
 
     # pass the code thru another LLM with more detailed information and request changes
-    more_info_msg = HumanMessage(content="""
-        Currently the Python code you have is: {code}
-       
-        To access a memory variable, here's the syntax:
-        - tmp_dict = pickle.load(open('{memory_location}', 'rb'))
-        - tmp_dict['variable_name']
-
-        To store a result in memory, here's the syntax:
-        - tmp_dict['variable_name'] = result
-        - pickle.dump(tmp_dict, open('{memory_location}', 'wb'))
-       
-       Here are the packages you can use: [pandas, numpy, scikit-learn]
-       Here are the facts you have: {facts_kv_pairs}
-
-       Please rewrite the code factoring the above information to guide you towards the code goal: {code_goal}
-       Make sure to return your outputs, you're running within a subprocess. Add print statements in your code.
-       RETURN ONLY THE CODE AS A STRING
-    """.format(
+    more_info_msg = HumanMessage(content=code_inter_more_info.format(
         code=state['code'],
         facts_kv_pairs= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
         code_goal=state['code_goal'],
@@ -163,7 +126,7 @@ def run_code(state: CodeInterpreterState) -> CodeInterpreterState:
     out, err = interpreter.stdout, interpreter.stderr
     out = parse_subprocess_output(out, "code-interpreter")
     print(out)
-    
+
     # grab the output/findings of the code and store in message history
     state['messages'].append(AIMessage(content="Here is the output of the code: " + out))
 
