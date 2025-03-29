@@ -22,7 +22,7 @@ The system leverages Docker containers for isolation and reproducibility, and us
 
 There were loads I learnt 
 
-1. Importance of splitting chat sessions per agent and 
+1. Importance of splitting chat sessions per agent and message chains to be optimized to only include chat-change info rather than informational jargon e.g. how kaggle api works
 2. Power of adding plan to prompt, improving reasoning ability
 3. Passing errors back into LLM's help it improve the code, but its coding reasoning is still wack
 4. Utilizing Docker to spin up containers, mount files, and copy results back into my file system
