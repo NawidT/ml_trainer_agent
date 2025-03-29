@@ -139,9 +139,7 @@ code_inter_init_prompt = """
             {{
                 "action": "run" | "store_fact" | "plan" | "end",
                 "details": {{
-                    "code": "Python code to run" | null,
                     "code_goal": "Code goal to guide you towards" | null,
-                    "plan": "plan for the search" | null,
                     "fact": "fact to be stored and it's unique key" | null,
                     "final_answer": "Answer to return" | null
                 }},
@@ -165,9 +163,7 @@ code_inter_loop_prompt = """
             {{
                 "action": "run" | "store_fact" | "plan" | "end",
                 "details": {{
-                    "code": "Python code to run" | null,
                     "code_goal": "Code goal to guide you towards" | null,
-                    "plan": "plan for the search" | null,
                     "fact": "fact to be stored and it's unique key" | null,
                     "final_answer": "Answer to return or Why you can't do this task" | null
                 }},
@@ -175,22 +171,20 @@ code_inter_loop_prompt = """
             }}
         """
 
-code_inter_run_code = """
-        Currently the Python code you have is: {code}
-       
-        To access a memory variable, here's the syntax:
-        - our_dict = pickle.load(open('{memory_location}', 'rb'))
-        - our_dict['variable_name']
+code_inter_run_code = """   
+    To access a memory variable, here's the syntax:
+    - our_dict = pickle.load(open('{memory_location}', 'rb'))
+    - our_dict['variable_name']
 
-        To store a result in memory, here's the syntax:
-        - our_dict['variable_name'] = result
-        - pickle.dump(our_dict, open('{memory_location}', 'wb'))
-       
-       Here are the packages you can use: [pandas, numpy, scikit-learn]
-       Here are the facts you have: {facts_kv_pairs}
-       Here is the tmp folder: {tmp_folder}
+    To store a result in memory, here's the syntax:
+    - our_dict['variable_name'] = result
+    - pickle.dump(our_dict, open('{memory_location}', 'wb'))
+    
+    Here are the packages you can use: [pandas, numpy, scikit-learn]
+    Here are the facts you have: {facts_kv_pairs}
+    Here is the tmp folder: {tmp_folder}
 
-       Please rewrite the code factoring the above information to guide you towards the code goal: {code_goal}
-       Add print statements in your code. Don't generate fake data.
-       RETURN ONLY THE CODE AS A STRING
-    """
+    Please write the code to guide you towards the code goal: {code_goal}
+    Add print statements in your code. Don't generate fake data.
+    RETURN ONLY THE CODE AS A STRING
+"""

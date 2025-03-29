@@ -8,7 +8,7 @@ import pickle
 
 from typing_extensions import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
-from main import parse_subprocess_output, chat_invoke  
+from utils import parse_subprocess_output, chat_invoke  
 from prompts import code_inter_run_code, code_inter_init_prompt, code_inter_loop_prompt
 
 class CodeInterpreterState(TypedDict):
@@ -48,6 +48,9 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
     """
 
     while True:
+        # only store the last 20 messages
+        state['messages'] = state['messages'][-20:]
+
         tmp_folder = ["tmp/tmp/" + e for e in os.listdir("./tmp/tmp")] + ["tmp/memory.pkl", "tmp/codespace.py"]
 
         central_msg = HumanMessage(content=(code_inter_init_prompt 
@@ -59,9 +62,14 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
             tmp_folder=tmp_folder
         ))
 
-        temp = state['messages']
+        temp = state['messages'].copy()
         temp.append(central_msg)
-        result_json = chat_invoke(temp, "json")
+        try:
+            result_json = chat_invoke(temp, "json", "ci")
+        except Exception as e:
+            print(e)
+            state['messages'].append(HumanMessage(content="Error in outputting json: " + str(e)))
+            continue
 
         # add the messages to the state in a custom way
         state['messages'].append(HumanMessage(content="What is your action?"))
@@ -69,7 +77,6 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
         print(result_json['action'] + " : " + result_json['reason'])
 
         if result_json['action'] == 'run':
-            state['code'] = result_json['details']['code']
             state['code_goal'] = result_json['details']['code_goal']
             state = run_code(state, state['code_goal'], tmp_folder)
         elif result_json['action'] == 'store_fact':
@@ -79,7 +86,7 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
                 state['messages'].append(SystemMessage(content="Invalid fact. Please try again."))
                 continue
         elif result_json['action'] == 'plan':
-            state = plan(state, result_json['details']['plan'])
+            state = plan(state)
         elif result_json['action'] == 'end':
             if result_json['details'] is not None and result_json['details']['final_answer'] is not None:
                 return state, result_json['details']['final_answer']
@@ -87,14 +94,14 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
                 state['messages'].append(SystemMessage(content="Invalid final answer. Please try again."))
                 continue
         
-def plan(state: CodeInterpreterState, plan: str) -> CodeInterpreterState:
+def plan(state: CodeInterpreterState) -> CodeInterpreterState:
     """Plans the search for the kaggle dataset."""
 
     # use LLM to generate a plan for the search
     msg = HumanMessage(content="Based on the above messages, use this space to write a short plan for your thoughts to proceed with the next steps.")
     temp = state['messages']
     temp.append(msg)
-    result = chat_invoke(temp, "str")
+    result = chat_invoke(temp, "str", "ci")
     state['messages'].pop(len(state['messages']) - 1)
     state['messages'].append(AIMessage(content=result))
 
@@ -110,7 +117,6 @@ def run_code(state: CodeInterpreterState, code_goal: str, tmp_folder: list[str])
 
     # pass the code thru another LLM with more detailed information and request changes
     more_info_msg = HumanMessage(content=code_inter_run_code.format(
-        code=state['code'],
         facts_kv_pairs= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
         code_goal=code_goal,
         memory_location=state['memory_location'],
@@ -119,7 +125,7 @@ def run_code(state: CodeInterpreterState, code_goal: str, tmp_folder: list[str])
 
     temp = state['messages']
     temp.append(more_info_msg)
-    generated_code = chat_invoke(temp, "str")
+    generated_code = chat_invoke(temp, "str", "ci")
     state['messages'].pop(len(state['messages']) - 1)
     state['messages'].append(AIMessage(content=generated_code))
 
@@ -128,7 +134,7 @@ def run_code(state: CodeInterpreterState, code_goal: str, tmp_folder: list[str])
     if generated_code.endswith("```"):
         generated_code = generated_code.rsplit("```", 1)[0]
 
-    print(generated_code)
+    # print(generated_code)
 
     # save the code in a python file (codespace.py)
     with open(state['code_file'], 'w') as f:
@@ -142,10 +148,14 @@ def run_code(state: CodeInterpreterState, code_goal: str, tmp_folder: list[str])
         text=True,
         check=True
     )
-    out, _ = interpreter.stdout, interpreter.stderr
-    out = parse_subprocess_output(out, "code-interpreter")
-    print(out)
-
+    try:
+        out, _ = interpreter.stdout, interpreter.stderr
+        out = parse_subprocess_output(out, "code-interpreter")
+        print(out)
+    except Exception as e:
+        print(e)
+        state['messages'].append(SystemMessage(content="Error running code. Please try again. " + str(e)))
+        return state
     # grab the output/findings of the code and store in message history
     state['messages'].append(SystemMessage(content="Here is the output of the code: " + out))
 
@@ -164,7 +174,7 @@ def store_fact(state: CodeInterpreterState, fact: str) -> CodeInterpreterState:
         RETURN ONLY THE KEY:VALUE PAIR AS A STRING
     """)
 
-    kv_pair = chat_invoke([msg], "str")
+    kv_pair = chat_invoke([msg], "str", "ci")
     print(kv_pair)
 
     # add the fact to the state

@@ -16,3 +16,14 @@ The system leverages Docker containers for isolation and reproducibility, and us
 ## Project Outline
 
 ![Project Outline](https://github.com/NawidT/ml_trainer_agent/blob/main/project_outline.png)
+
+
+## Key Learnings
+
+There were loads I learnt 
+
+1. Importance of splitting chat sessions per agent
+2. Power of adding plan to prompt, improving reasoning ability
+3. Passing errors back into LLM's help it improve the code, but its coding reasoning is still wack
+4. Utilizing Docker to spin up containers, mount files, and copy results back into my file system
+5. Learned how to run code within python process (using subprocess) and how to connect it to persistent memory (session based pickle files)

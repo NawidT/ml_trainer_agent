@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, Base
 import subprocess
 from typing_extensions import TypedDict
 from prompts import db_finder_plan_search_prompt, db_finder_loop_prompt, db_finder_kaggle_api
-from main import cli_kaggle_docker, parse_subprocess_output, chat_invoke
+from utils import cli_kaggle_docker, parse_subprocess_output, chat_invoke
 
 
 class DBFinderState(TypedDict):
@@ -15,8 +15,6 @@ class DBFinderState(TypedDict):
     temp: dict
     loop_results: list[str] = []
     plan: str = ""
-
-
 
 def agentic_loop(state: DBFinderState) -> tuple[DBFinderState, str]:
     """
@@ -42,8 +40,7 @@ def agentic_loop(state: DBFinderState) -> tuple[DBFinderState, str]:
 
         temp = state['messages']
         temp.append(central_msg)
-        result_json = chat_invoke(temp, "json")
-        print(result_json)
+        result_json = chat_invoke(temp, "json", "df")
         state['messages'].pop(len(state['messages']) - 1)
     
         # add the messages to the state in a custom way
@@ -62,7 +59,6 @@ def agentic_loop(state: DBFinderState) -> tuple[DBFinderState, str]:
             state['temp'][result_json['details'].split(':')[0]] = result_json['details'].split(':')[1]
             print("temp: " + str(state['temp']))
         elif result_json['action'] == 'end':
-            print("end: " + result_json['details'])
             return state, result_json['details']
         else:
             # send error to the messages 
@@ -77,10 +73,9 @@ def plan(state: DBFinderState) -> DBFinderState:
     )
     temp = state['messages']
     temp.append(plan_msg)
-    result = chat_invoke(temp, "str")
+    result = chat_invoke(temp, "str", "df")
     state['messages'].pop(len(state['messages']) - 1)
     state['messages'].append(AIMessage(content=result))
-    print("plan: " + result)
     state['plan'] = result
     state['messages'].append(HumanMessage(content="Now that we have a plan, let's proceed with the search?"))
 
@@ -96,7 +91,7 @@ def run_kaggle_api(state: DBFinderState, task: str) -> DBFinderState:
 
     temp = state['messages']
     temp.append(msg)
-    result = chat_invoke(temp, "json")
+    result = chat_invoke(temp, "json", "df")
     state['messages'].pop(len(state['messages']) - 1)
     kaggle_api_command = result['command']
     print("kaggle api command: ", kaggle_api_command)
