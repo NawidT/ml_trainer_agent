@@ -6,8 +6,8 @@ import json
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 import subprocess
 from typing_extensions import TypedDict
-from prompts import kaggle_api_search_prompt, db_finder_plan_search_prompt, db_finder_loop_prompt    
-from main import chat, cli_kaggle_docker, parse_subprocess_output
+from prompts import db_finder_plan_search_prompt, db_finder_loop_prompt, code_inter_kaggle_api
+from main import cli_kaggle_docker, parse_subprocess_output, chat_invoke
 
 
 class DBFinderState(TypedDict):
@@ -34,8 +34,7 @@ def agentic_loop(state: DBFinderState) -> DBFinderState:
         central_msg = HumanMessage(content=
             db_finder_loop_prompt.format(
                 query=state['query'], 
-                plan_once="Be sure to plan your approach only once" 
-                    if len(state['messages']) == 0 else "Here is your plan: " + state['plan'],
+                plan_once="Be sure to plan your approach only once" if len(state['messages']) == 0 else "Here is your plan: " + state['plan'],
                 temp=" ".join([f"{k}: {v}" for k, v in state['temp'].items()]),
                 loop_stuck="You are stuck in a loop. Please try to change your action" if len(state['loop_results']) >= 2 and len(set(state['loop_results'][-3:])) == 1 else "",
             )
@@ -43,23 +42,9 @@ def agentic_loop(state: DBFinderState) -> DBFinderState:
 
         temp = state['messages']
         temp.append(central_msg)
-        result = chat.invoke(temp)
+        result_json = chat_invoke(temp, "json")
+        print(result_json)
         state['messages'].pop(len(state['messages']) - 1)
-
-        # cleanup the result
-        if result.content.startswith('```json'):
-            result.content = result.content.replace('```json', '', 1)
-        if result.content.startswith('```'):
-            result.content = result.content.replace('```', '', 1)
-        if result.content.endswith('```'):
-            result.content = result.content.rsplit('```', 1)[0]
-
-        try:
-            result_json = json.loads(result.content.strip())
-        except Exception as e:
-            print(result.content.strip())
-            state['messages'].append(SystemMessage(content=f"Invalid JSON. Please try again. Here is the error: {str(e)}"))
-            continue
     
         # add the messages to the state in a custom way
         state['messages'].append(HumanMessage(content="What is your action?"))
@@ -71,9 +56,8 @@ def agentic_loop(state: DBFinderState) -> DBFinderState:
         # execute the actions
         if result_json['action'] == 'plan':
             state = plan(state)
-        elif result_json['action'] == 'search':
-            state['query'] = result_json['details']
-            state = run_kaggle_api(state, kaggle_api_search_prompt)
+        elif result_json['action'] == 'api':
+            state = run_kaggle_api(state, result_json['details'])
         elif result_json['action'] == 'alter':
             state['temp'][result_json['details'].split(':')[0]] = result_json['details'].split(':')[1]
             print("temp: " + str(state['temp']))
@@ -93,56 +77,47 @@ def plan(state: DBFinderState) -> DBFinderState:
     )
     temp = state['messages']
     temp.append(plan_msg)
-    result = chat.invoke(temp)
+    result = chat_invoke(temp, "str")
     state['messages'].pop(len(state['messages']) - 1)
-    state['messages'].append(AIMessage(content=result.content.strip()))
-    print("plan: " + result.content.strip())
+    state['messages'].append(AIMessage(content=result))
+    print("plan: " + result)
+    state['plan'] = result
     state['messages'].append(HumanMessage(content="Now that we have a plan, let's proceed with the search?"))
 
     return state
 
-def run_kaggle_api(state: dict, prompt: str) -> dict:
-    """Runs the kaggle api search command."""
+def run_kaggle_api(state: DBFinderState, task: str) -> DBFinderState:
+    """Runs the kaggle api command in the code interpreter."""
 
-    # generate the kaggle api search command to be used kaggle datasets -s {query}
-    instructions = HumanMessage(content=
-        prompt.format(query=state['query'])  
-    )
-    
-    # temp is created to not add the instuction to messages everytime LLM is called
+    # use LLM to generate kaggle command based on the task
+    msg = HumanMessage(content=code_inter_kaggle_api.format(
+        task=task,
+    ))
+
     temp = state['messages']
-    temp.append(instructions)
-    result = chat.invoke(temp)
+    temp.append(msg)
+    result = chat_invoke(temp, "json")
     state['messages'].pop(len(state['messages']) - 1)
-    generated_command = result.content.strip()
-    state['messages'].append(AIMessage(content="generated command:" + generated_command))
-    print("generated command: " + generated_command)
+    kaggle_api_command = result['command']
+    print("kaggle api command: ", kaggle_api_command)
 
-    # execute the command in a subprocess in a docker container
-    try:
-        stdout, _ = cli_kaggle_docker(generated_command)
-        parsed_stdout = parse_subprocess_output(stdout, "kaggle-api")
-    except Exception as e:
-        # create an SystemMessage with the error and return state
-        state['messages'].append(SystemMessage(content=f"Most likely the generated query syntax is not valid. Please try again. Here is the error: {str(e)}"))
-        print(f"Error running command: ", str(e))
-        return state
-    finally:
-        # Clean up: Stop and remove containers
-        subprocess.run(
-            ['docker-compose', '-f', 'dockercompose.yaml', 'down'],
-            capture_output=True
-        )
+    # run the kaggle api command
+    out, _ = cli_kaggle_docker(kaggle_api_command)
 
-    # add the interpreter result to the messages
-    state['messages'].append(SystemMessage(content=f"Here is the output of the command: {parsed_stdout}"))
-    
+    # parse the output of the kaggle api command
+    out = parse_subprocess_output(out, "kaggle-api")
+    print(out)
+
+    # store the output in the message history
+    if "error" in out.lower():
+        state['messages'].append(SystemMessage(content="Here is the error. Use this to guide changes to the command: " + out))
+    else:
+        state['messages'].append(SystemMessage(content="Here is the output of the command: " + out))
+
     # return the state
     return state
 
-
 # TESTING
-
 agentic_loop(
     {
         'messages': [],

@@ -1,16 +1,14 @@
 # STORES ALL THE LARGE PROMPTS
 
 db_finder_loop_prompt =  """
-    You are a helpful assistant that can help with a task of finding a dataset of kaggle based on the user's query {query}. 
+    You are a helpful assistant that can help with a task of finding a dataset on kaggle and downloading it based on the user's query {query}. 
     {plan_once}. Be optimal and efficient. 
 
-
-
     You can do the following actions:
-    - plan: plan the search for a dataset
-    - search: use the kaggle api to narrow the search for a dataset
+    - plan: a space to write your thoughts/plan-of-action
+    - api: use the kaggle api to search for datasets, download them, or learn about its file structure
     - alter: alter the key-values in the temp dict
-    - end: select a dataset (END)
+    - end: completed task (END)
 
     Here is the info of the temp dict:
     {temp}
@@ -19,11 +17,11 @@ db_finder_loop_prompt =  """
 
     RETURN IN FOLLOWING FORMAT:
     {{
-        "action": "plan" | "search" | "alter" | "end",
-        "details": "new query to search for" | "key-value pair in format key: value" | "plan for the search" | "the selected dataset's reference"
+        "action": "plan" | "api" | "alter" | "end",
+        "details": "what to do using the api" | "key-value pair in format key: value" | "the end notes"
         "reason": "reason for the action"
     }}
-            """
+"""
 
 kaggle_api_search_prompt = """ 
         You are a helpful assistant that creates kaggle api search commands. Search the Kaggle API for datasets to get the most relevant results for the user's query: {query}. 
@@ -41,8 +39,10 @@ kaggle_api_search_prompt = """
         An example command is:
                 kaggle datasets list --sort-by 'hottest' --search 'diabetes'
 
-        YOU MUST RETURN IN THE FOLLOWING FORMAT: 
-                kaggle datasets list <your_command>
+        YOU MUST RETURN IN THE FOLLOWING FORMAT:
+        {{
+            "command": "kaggle datasets list <your_command>"
+        }}
         """
 
 db_finder_plan_search_prompt = """
@@ -132,7 +132,6 @@ code_inter_run_code = """
 
 code_inter_kaggle_api = """
 Based on the task ({task}) and the above previous messages, generate the kaggle api command. Here's how to do it.
-The dataset we want to use is: {dataset}
 
 USAGE OF KAGGLE DATASETS:
 usage: kaggle datasets [-h] (list | files | download) ...
@@ -164,5 +163,8 @@ options:
   -p, --path PATH       Folder where downloaded. Use the tmp folder to store the files.
   --unzip               Unzip the downloaded file. Will delete the zip file when completed.
 
-RETURN JUST THE COMMAND AS A STRING
+YOU MUST RETURN IN THE FOLLOWING FORMAT:
+{{
+    "command": "kaggle datasets <your_command>"
+}}
 """

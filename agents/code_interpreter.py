@@ -9,7 +9,7 @@ import pickle
 
 from typing_extensions import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
-from main import chat, cli_kaggle_docker, parse_subprocess_output
+from main import chat, cli_kaggle_docker, parse_subprocess_output, chat_invoke  
 from prompts import code_inter_run_code, code_inter_init_prompt, code_inter_loop_prompt, code_inter_kaggle_api
 
 class CodeInterpreterState(TypedDict):
@@ -171,7 +171,7 @@ def run_kaggle_api(state: CodeInterpreterState, task: str) -> CodeInterpreterSta
 
     temp = state['messages']
     temp.append(msg)
-    result = chat.invoke(temp)
+    result = chat_invoke(temp, "str")
     state['messages'].pop(len(state['messages']) - 1)
     kaggle_api_command = result.content.strip()
     print("kaggle api command: ", kaggle_api_command)

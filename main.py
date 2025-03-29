@@ -1,8 +1,24 @@
 import os
 from langchain_openai.chat_models import ChatOpenAI
 import subprocess
+from langchain_core.messages import BaseMessage
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+
+
 
 chat = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
+
+def chat_invoke(messages: list[BaseMessage], output_format: str = "json") -> str:
+    """
+    This function is used to invoke the chat model.
+    """
+    if output_format == "json":
+        chain = chat | JsonOutputParser()
+    elif output_format == "str":
+        chain = chat | StrOutputParser()
+    else:
+        raise ValueError("Invalid output format. Please use 'json' or 'str'.")
+    return chain.invoke(messages)
 
 # handles the planning and eval LLMs
 # connects to the database_finder_agent and code_interpreter_agent
