@@ -1,0 +1,5 @@
+numpy
+kaggle
+docker
+langchain
+langchain-openai

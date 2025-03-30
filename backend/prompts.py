@@ -1,30 +1,5 @@
 # STORES ALL THE LARGE PROMPTS
 
-
-# db_finder_init_prompt =  """
-#     You are a helpful assistant that can help with a task of finding a dataset on kaggle and downloading it based on the user's query {query}. 
-#     {plan_once}. Be optimal and efficient. 
-
-#     You can do the following actions:
-#     - plan: a space to write your thoughts/plan-of-action
-#     - api: use the kaggle api to search for datasets, download them, or learn about its file structure
-#     - alter: alter the key-values in the temp dict
-#     - end: completed task (END)
-
-#     Here is the info of the temp dict:
-#     {temp}
-
-#     {loop_stuck}
-
-#     RETURN IN FOLLOWING FORMAT:
-#     {{
-#         "action": "plan" | "api" | "alter" | "end",
-#         "details": "what to do using the api" | "key-value pair in format key: value" | "the end notes"
-#         "reason": "reason for the action"
-#     }}
-# """
-
-
 db_finder_loop_prompt =  """
     You are a helpful assistant that can help with a task of finding a dataset on kaggle and downloading it .
     Here's the user's query {query}. {plan_once}. Be optimal and efficient. 
@@ -182,7 +157,9 @@ code_inter_run_code = """
     
     Here are the packages you can use: [pandas, numpy, scikit-learn]
     Here are the facts you have: {facts_kv_pairs}
-    Here is the tmp folder: {tmp_folder}
+    Here is the tmp folder: 
+    {tmp_folder}
+    Use the correct path when accessing files in the tmp folder.
 
     Please write the code to guide you towards the code goal: {code_goal}
     Add print statements in your code. Don't generate fake data.

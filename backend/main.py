@@ -1,4 +1,6 @@
-import os
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from langchain_openai.chat_models import ChatOpenAI
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -10,11 +12,20 @@ class MainState(TypedDict):
     messages: list[BaseMessage]
     user_query: str
 
+# refresh the memory.pkl file``
+def refresh_memory():
+    if os.path.exists("tmp/memory.pkl"):
+        os.remove("tmp/memory.pkl")
+    
+    # create a new memory.pkl file
+    with open("tmp/memory.pkl", "w") as f:
+        pass
 
 def main(state: MainState):
     """
     This function is used to run the main loop.
     """
+    refresh_memory()
     # adding initial states for persistence throughout main loop
     db_finder_state = DBFinderState(
         messages=[],
@@ -107,9 +118,9 @@ main(
         'messages': [],
         'user_query': """
             Find me a dataset of house prices in UAE and store it locally in tmp folder. 
-            Create a predictive model with an accuracy of 80% plus when predicting house prices in UAE. 
+            Create a predictive model for house prices in UAE. 
             Then find houses in California with the same features and predict their prices. 
-            Report the accuracy of the UAE-based model
+            Report the accuracy of the UAE-based model on California-based data and UAE-based data. 
         """
     }
 )

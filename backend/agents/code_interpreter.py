@@ -78,7 +78,7 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
 
         if result_json['action'] == 'run':
             state['code_goal'] = result_json['details']['code_goal']
-            state = run_code(state, state['code_goal'], tmp_folder)
+            state = run_code(state, state['code_goal'])
         elif result_json['action'] == 'store_fact':
             if result_json['details'] is not None and result_json['details']['fact'] is not None and type(result_json['details']['fact']) == str:
                 state = store_fact(state, result_json['details']['fact'])
@@ -112,10 +112,12 @@ def plan(state: CodeInterpreterState) -> CodeInterpreterState:
     return state
         
         
-def run_code(state: CodeInterpreterState, code_goal: str, tmp_folder: list[str]) -> CodeInterpreterState:
+def run_code(state: CodeInterpreterState, code_goal: str) -> CodeInterpreterState:
     """Runs the code in the code interpreter and potentially stores the result in memory."""
 
     # pass the code thru another LLM with more detailed information and request changes
+    tmp_folder = ["tmp/tmp/" + e for e in os.listdir("./tmp/tmp")] + ["tmp/memory.pkl", "tmp/codespace.py"]
+    print(tmp_folder)
     more_info_msg = HumanMessage(content=code_inter_run_code.format(
         facts_kv_pairs= ", ".join([f"{k}: {v}" for k, v in state['facts'].items()]),
         code_goal=code_goal,
@@ -134,7 +136,7 @@ def run_code(state: CodeInterpreterState, code_goal: str, tmp_folder: list[str])
     if generated_code.endswith("```"):
         generated_code = generated_code.rsplit("```", 1)[0]
 
-    # print(generated_code)
+    print(generated_code)
 
     # save the code in a python file (codespace.py)
     with open(state['code_file'], 'w') as f:
@@ -184,15 +186,15 @@ def store_fact(state: CodeInterpreterState, fact: str) -> CodeInterpreterState:
     print(state['facts'])
     return state
 
-# # TESTING
-# agentic_loop(
-#     {
-#         'messages': [],
-#         'code': '',
-#         'user_query': '''On the exisiting dataset, find me the top 10 most expensive properties in UAE''',
-#         'facts': {},
-#         'memory_location': 'tmp/memory.pkl', # use relative path since both in same directory (tmp)
-#         'code_file': 'tmp/codespace.py',
-#         'plan': ''
-#     }
-# )
+# TESTING
+agentic_loop(
+    {
+        'messages': [],
+        'code': '',
+        'user_query': '''On the exisiting dataset, find me the top 10 most expensive properties in UAE''',
+        'facts': {},
+        'memory_location': 'tmp/memory.pkl', # use relative path since both in same directory (tmp)
+        'code_file': 'tmp/codespace.py',
+        'plan': ''
+    }
+)

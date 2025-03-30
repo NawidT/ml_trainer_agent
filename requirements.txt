@@ -1,8 +1,0 @@
-numpy
-kaggle
-kagglehub
-kagglehub[pandas-datasets]
-docker
-langchain
-langchain-openai
-langgraph
