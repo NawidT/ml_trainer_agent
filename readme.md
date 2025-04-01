@@ -20,7 +20,7 @@ Essentially we have:
 
 ## Project Outline
 
-![Project Outline](https://github.com/NawidT/ml_trainer_agent/blob/main/project_outline.png)
+![Project Outline](https://github.com/NawidT/ml_trainer_agent/blob/main/backend/project_outline.png)
 
 
 ## Key Learnings
@@ -37,3 +37,4 @@ There were loads I learnt
 
 - Concurrent working agents : Using the current architecture, the agents essentially work in one workflow. But some tasks can be pre-done while one agent is doing something. For instance, if our user wants to use a UAE-real-estate ML model to predict California house prices, while python agent trains on UAE data, the kaggle agent can fetch California data
 - RL capabilities : since in the main loop, we have a grading mechanism to see how well the manager is performing, we can utilize the grades + actions_so_far to create an RL based learnings. The only question is, where can we apply our RL learnings within an agent? 
+- Adding guard rails: centralized guardrails system
