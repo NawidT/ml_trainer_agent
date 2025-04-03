@@ -120,7 +120,7 @@ main(
             Find me a dataset of house prices in UAE and store it locally in tmp folder. 
             Create a predictive model for house prices in UAE. 
             Then find houses in California with the same features and predict their prices. 
-            Report the accuracy of the UAE-based model on California-based data and UAE-based data. 
+            Report the accuracy of the UAE-based model on California-based data.
         """
     }
 )

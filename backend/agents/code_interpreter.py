@@ -51,7 +51,7 @@ def agentic_loop(state: CodeInterpreterState) -> CodeInterpreterState:
         # only store the last 20 messages
         state['messages'] = state['messages'][-20:]
 
-        tmp_folder = ["tmp/tmp/" + e for e in os.listdir("./tmp/tmp")] + ["tmp/memory.pkl", "tmp/codespace.py"]
+        tmp_folder = ["tmp/tmp/" + e for e in os.listdir("./backend/tmp/tmp")] + ["tmp/memory.pkl", "tmp/codespace.py"]
 
         central_msg = HumanMessage(content=(code_inter_init_prompt 
                     if len(state['messages']) == 0 else code_inter_loop_prompt).format(
