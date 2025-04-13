@@ -22,6 +22,9 @@ Essentially we have:
 
 ![Project Outline](https://github.com/NawidT/ml_trainer_agent/blob/main/backend/project_outline.png)
 
+# Current Issues
+- chat_invoke uses 3 chat sessions to enable one chat session per agent
+- repeat plan calls by agents leads to loops. Force agents to choose from tasks not last selected
 
 ## Key Learnings
 

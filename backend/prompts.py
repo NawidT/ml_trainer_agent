@@ -1,5 +1,7 @@
 # STORES ALL THE LARGE PROMPTS
 
+
+## DATABASE FINDER AGENT ------------------------------------------------------------
 db_finder_loop_prompt =  """
     You are a helpful assistant that can help with a task of finding a dataset on kaggle and downloading it .
     Here's the user's query {query}. {plan_once}. Be optimal and efficient. 
@@ -65,28 +67,6 @@ YOU MUST RETURN IN THE FOLLOWING FORMAT:
 }}
 """
 
-# kaggle_api_search_prompt = """ 
-#         You are a helpful assistant that creates kaggle api search commands. Search the Kaggle API for datasets to get the most relevant results for the user's query: {query}. 
-#         Use previous messages to direct your search, make sure not to re-search the same thing, be optimal. Do not make bash commands, just return the command as a string.
-
-#         Here is the usage for the "kaggle datasets list" command:
-#         usage: kaggle datasets list [-h] [--sort-by SORT_BY] [--size SIZE] [--file-type FILE_TYPE] [-s SEARCH] [--max-size MAX_SIZE]
-
-#         --sort-by SORT_BY     Sort list results. Valid options are 'hottest', 'votes', 'updated', and 'active'
-#         --size SIZE           DEPRECATED. Please use --max-size and --min-size to filter dataset sizes.
-#         --file-type FILE_TYPE Search for datasets with a specific file type. Default is 'all'. Valid options are 'all', 'csv', 'sqlite', 'json', and 'bigQuery'. Please note that bigQuery datasets cannot be downloaded
-#         -s SEARCH, --search SEARCH Term(s) to search for
-#         --max-size MAX_SIZE   Specify the maximum size of the dataset to return (bytes)
-
-#         An example command is:
-#                 kaggle datasets list --sort-by 'hottest' --search 'diabetes'
-
-#         YOU MUST RETURN IN THE FOLLOWING FORMAT:
-#         {{
-#             "command": "kaggle datasets list <your_command>"
-#         }}
-#         """
-
 db_finder_plan_search_prompt = """
         You have access to the following information:
         - the user's query: {query}
@@ -95,6 +75,8 @@ db_finder_plan_search_prompt = """
         You also have access to previous messages. Use this space to write your thoughts. Return in plain english and keep it short.
         """
 
+
+## CODE INTERPRETER AGENT ------------------------------------------------------------
 code_inter_init_prompt = """
             You are an assistant that helps your user get closer to {user_query}
             You have access to the following information:
@@ -164,4 +146,46 @@ code_inter_run_code = """
     Please write the code to guide you towards the code goal: {code_goal}
     Add print statements in your code. Don't generate fake data.
     RETURN ONLY THE CODE AS A STRING
+"""
+
+
+## MANAGER AGENT ------------------------------------------------------------
+
+manager_stage_one_prompt = """
+      You are a helpful manager who controls two assistants.
+      The first assistant is a database_finder_agent that is a kaggle api expert.
+      The second assistant is a code_interpreter_agent that is a python programmer.
+      You will be given a user query.
+      
+      user query : {user_query} 
+      Use the previous messages.                  
+
+      RETURN IN THE FOLLOWING FORMAT:
+      {{
+      "assistant": "database_finder_agent" | "code_interpreter_agent" | "END",
+      "details": "details of the exact action the assistant needs to take"
+      "reason": "reason for choosing the assistant or ending"
+      }}                        
+      
+  """
+
+manager_stage_one_optimized_prompt = """
+  You are a helpful manager who controls two assistants (database_finder_agent and code_interpreter_agent).
+  user query : {user_query}   
+"""
+
+manager_stage_two_prompt = """
+  Your task is to audit the work of the manager and grade its work to make sure it made the best possible decision.
+  
+  grading scale : 1 being the worst and 5 being the best.
+  chat history : {messages}
+  user query : {user_query}
+  manager's decision : {manager_decision}
+  manager's thinking : {manager_thinking}
+                          
+  RETURN IN THE FOLLOWING FORMAT:
+  {{
+  "grade": "1" | "2" | "3" | "4" | "5",
+  "reason": "reason for the grade"
+  }}                        
 """

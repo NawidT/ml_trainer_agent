@@ -3,3 +3,5 @@ kaggle
 docker
 langchain
 langchain-openai
+langchain-community
+langchain-ollama

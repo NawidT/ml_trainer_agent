@@ -1,13 +1,12 @@
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from langchain_openai.chat_models import ChatOpenAI
 from typing_extensions import TypedDict
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
 from agents.db_finder import agentic_loop as db_finder_agentic_loop, DBFinderState
 from agents.code_interpreter import agentic_loop as code_inter_agentic_loop, CodeInterpreterState
 from utils import chat_invoke
-
+from prompts import manager_stage_one_prompt, manager_stage_one_optimized_prompt, manager_stage_two_prompt
 class MainState(TypedDict):
     messages: list[BaseMessage]
     user_query: str
@@ -47,55 +46,46 @@ def main(state: MainState):
     )
 
     while True:
-        stage_one_msg = HumanMessage(content="""
-            You are a helpful manager who controls two assistants.
-            The first assistant is a database_finder_agent that is a kaggle api expert.
-            The second assistant is a code_interpreter_agent that is a python programmer.
-            You will be given a user query.
-            
-            user query : {user_query} 
-            Use the previous messages.                  
+        # used to store manager's thoughts until a decision is made
+        mini_chain = []
 
-            RETURN IN THE FOLLOWING FORMAT:
-            {{
-            "assistant": "database_finder_agent" | "code_interpreter_agent" | "END",
-            "details": "details of the exact action the assistant needs to take"
-            "reason": "reason for choosing the assistant or ending"
-            }}                        
-            
-        """.format(user_query=state['user_query']))
+        # initiate stage one; manager agent makes initial decision
+        stage_one_msg = HumanMessage(content=manager_stage_one_prompt.format(user_query=state['user_query']))
+        stage_one_json = chat_invoke(stage_one_msg, state['messages'], "json", "main")
 
-        state['messages'].append(stage_one_msg)
-        stage_one_json = chat_invoke(state['messages'], "json", "main")
+        # store optimized messages of Human-AI interaction
+        mini_chain.append(HumanMessage(content=manager_stage_one_optimized_prompt.format(user_query=state['user_query'])))
+        mini_chain.append(AIMessage(
+            content="I chose the " + stage_one_json['assistant'] + " because " + stage_one_json['reason']
+        ))
+        print("manager chose : " + stage_one_json['assistant'] + " because " + stage_one_json['reason'])
 
-
-        stage_two_msg = HumanMessage(content="""
-            Your task is to audit the work of the manager and grade its work to make sure it made the best possible decision.
-            
-            grading scale : 1 being the worst and 5 being the best.
-            chat history : {messages}
-            user query : {user_query}
-            manager's decision : {manager_decision}
-                                    
-            RETURN IN THE FOLLOWING FORMAT:
-            {{
-            "grade": "1" | "2" | "3" | "4" | "5",
-            "reason": "reason for the grade"
-            }}                        
-        """.format(
+        # initiate stage two; self-audit the work of the manager and grade your work
+        stage_two_msg = HumanMessage(content=manager_stage_two_prompt.format(
             messages=state['messages'][-20:], user_query=state['user_query'], 
-            manager_decision=stage_one_json['assistant'] + " -> " + stage_one_json['reason']
+            manager_decision=stage_one_json['assistant'] + " -> " + stage_one_json['reason'],
+            manager_thinking=mini_chain
         ))
 
         stage_two_json = chat_invoke([stage_two_msg], "json", "main")
         grade = int(stage_two_json['grade'])
-        print("grade : " + str(grade))
-
+        print("self grade : " + str(grade) + " because " + stage_two_json['reason'])
+        
+        # if the grade is less than 2, the manager made a bad decision
+        # for bad decisions, we will restart the loop and not append messages to the chain
+        # for good decisions, we will continue the loop and append messages to the chain
         if grade < 2:
-            state['messages'].append(SystemMessage(content="The manager made a bad decision. Please try again."))
+            mini_chain.append(AIMessage(content="I made a bad decision. Please try again."))
             continue
         else:
-            state['messages'].append(SystemMessage(content=f"The manager made a good decision. {stage_one_json['details']}"))
+            mini_chain = [] # reset the mini_chain
+            # finally append the decision to the chain
+            state["messages"].append(HumanMessage(content=manager_stage_one_optimized_prompt.format(user_query=state['user_query'])))
+            state['messages'].append(AIMessage(
+                content=f"I made a good decision. I chose the {stage_one_json['assistant']} because {stage_one_json['reason']}"
+            ))
+
+            
             print("-----------------------------------" + stage_one_json['assistant'] + "-----------------------------------")
             if stage_one_json['assistant'] == "database_finder_agent":
                 db_finder_state['query'] = stage_one_json['details']
@@ -109,7 +99,7 @@ def main(state: MainState):
                 print("code_inter_state : " + findings)
                 state['messages'].append(HumanMessage(content="Here are the findings from the code_interpreter_agent: " + findings))
             elif stage_one_json['assistant'] == "END":
-                print(" ENDING REASON : " + stage_one_json['reason'])
+                print("ENDING REASON : " + stage_one_json['reason'])
                 return stage_one_json['reason']
 
 

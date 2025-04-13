@@ -1,4 +1,5 @@
 from langchain_openai.chat_models import ChatOpenAI
+from langchain_ollama.chat_models import ChatOllama
 import os
 import subprocess
 from langchain_core.messages import BaseMessage
@@ -7,14 +8,16 @@ from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 chat_main = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
 chat_df = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
 chat_ci = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
+chat_ollama = ChatOllama(model="llama3.2:latest")
 
 # utility functions
-def chat_invoke(messages: list[BaseMessage], output_format: str = "json", caller: str = "main") -> str:
+def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], output_format: str = "json", caller: str = "main") -> str:
     """
-    This function is used to invoke the chat model.
+    This function is used to invoke the chat model. Seperate the chat session from message chain by passing new list in params.
+
     """
 
-    chat = chat_main if caller == "main" else chat_df if caller == "df" else chat_ci
+    chat = chat_ollama if caller == "main" else chat_df if caller == "df" else chat_ci
 
     if output_format == "json":
         chain = chat | JsonOutputParser()
@@ -22,7 +25,7 @@ def chat_invoke(messages: list[BaseMessage], output_format: str = "json", caller
         chain = chat | StrOutputParser()
     else:
         raise ValueError("Invalid output format. Please use 'json' or 'str'.")
-    return chain.invoke(messages)
+    return chain.invoke(messages + [cur_message])
  
 def cli_kaggle_docker(command: str) -> str:
     """
