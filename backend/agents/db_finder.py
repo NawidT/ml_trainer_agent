@@ -6,103 +6,101 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, Base
 import subprocess
 from typing_extensions import TypedDict
 from prompts import db_finder_plan_search_prompt, db_finder_loop_prompt, db_finder_kaggle_api
-from utils import cli_kaggle_docker, parse_subprocess_output, chat_invoke
+from utils import cli_kaggle_docker, parse_subprocess_output, chat_invoke, get_file_names
 
 
-class DBFinderState(TypedDict):
-    messages: list[BaseMessage] = []
-    query: str
-    temp: dict
-    loop_results: list[str] = []
-    plan: str = ""
+class DBFinder:
+    def __init__(self, messages=None, query="", temp=None, loop_results=None, plan=""):
+        """Initialize the DBFinder with state attributes."""
+        self.messages = messages or []
+        self.query = query
+        self.temp = temp or {}
+        self.loop_results = loop_results or []
+        self.plan = plan
 
-def agentic_loop(state: DBFinderState) -> tuple[DBFinderState, str]:
-    """
-    This function is used to run the agentic loop. It will select between running kaggle api search, altering the temp dict in the state, or selecting a dataset (END).
-    """
-    
-    while True:
-        # only store the last 20 messages
-        state['messages'] = state['messages'][-20:]
+    def agentic_loop(self):
+        """
+        This function is used to run the agentic loop. It will select between running kaggle api search, altering the temp dict in the state, or selecting a dataset (END).
+        """
+        
+        while True:
+            # only store the last 20 messages
+            self.messages = self.messages[-20:]
+            tmp_folders = get_file_names("./tmp")
 
-        # run the central message
-        central_msg = HumanMessage(content=
-            db_finder_loop_prompt.format(
-                query=state['query'], 
-                plan_once="Be sure to plan your approach only once" if len(state['messages']) == 0 else "Here is your plan: " + state['plan'],
-                temp=" ".join([f"{k}: {v}" for k, v in state['temp'].items()]),
-                loop_stuck="You are stuck in a loop. Please try to change your action" if len(state['loop_results']) >= 2 and len(set(state['loop_results'][-3:])) == 1 else "",
-                tmp_folder=os.listdir("./tmp/tmp")
-            )
+            prompt_inject = {
+                "query": self.query,
+                "plan_once": "Be sure to plan your approach only once" if len(self.messages) == 0 else "Here is your plan: " + self.plan,
+                "temp": " ".join([f"{k}: {v}" for k, v in self.temp.items()]),
+                "loop_stuck": "You are stuck in a loop. Please try to change your action" if len(self.loop_results) >= 2 and len(set(self.loop_results[-3:])) == 1 else "",
+                "tmp_folder_names": tmp_folders
+            }
+
+            # run the central message
+            central_msg = HumanMessage(content=db_finder_loop_prompt.format(**prompt_inject))
+
+            result_json = chat_invoke(central_msg, self.messages, "json")
+        
+            # add the messages to the state in a custom way
+            self.messages.append(HumanMessage(content="What is your action?"))
+            self.messages.append(AIMessage(content=str(result_json['action']) + " : " + str(result_json['reason'])))
+            print(result_json['action'] + " : " + result_json['reason'])
+
+            self.loop_results.append(result_json['action'])
+
+            # execute the actions
+            if result_json['action'] == 'plan':
+                self.plan_steps()
+            elif result_json['action'] == 'api':
+                self.run_kaggle_api(result_json['details'])
+            elif result_json['action'] == 'alter':
+                self.temp[result_json['details'].split(':')[0]] = result_json['details'].split(':')[1]
+                print("temp: " + str(self.temp))
+            elif result_json['action'] == 'end':
+                return self, result_json['details']
+            else:
+                # send error to the messages 
+                self.messages.append(SystemMessage(content=f"Invalid action. Please try again. Here is the error: {str(e)}"))
+                continue
+
+    def plan_steps(self):
+        """Plans the search for a dataset."""
+        
+        plan_msg = HumanMessage(content=
+            db_finder_plan_search_prompt.format(query=self.query, temp=" ".join([f"{k}: {v}" for k, v in self.temp.items()]))
         )
+        result = chat_invoke(plan_msg, self.messages, "str")
+        self.plan = result
+        self.messages.append(HumanMessage(content="Now that we have a plan, let's proceed with the search?"))
 
-        result_json = chat_invoke(central_msg, state['messages'], "json", "df")
-    
-        # add the messages to the state in a custom way
-        state['messages'].append(HumanMessage(content="What is your action?"))
-        state['messages'].append(AIMessage(content=str(result_json['action']) + " : " + str(result_json['reason'])))
-        print(result_json['action'] + " : " + result_json['reason'])
+    def run_kaggle_api(self, task):
+        """Runs the kaggle api command in the code interpreter."""
 
-        state['loop_results'].append(result_json['action'])
+        # use LLM to generate kaggle command based on the task
+        msg = HumanMessage(content=db_finder_kaggle_api.format(
+            task=task,
+        ))
 
-        # execute the actions
-        if result_json['action'] == 'plan':
-            state = plan(state)
-        elif result_json['action'] == 'api':
-            state = run_kaggle_api(state, result_json['details'])
-        elif result_json['action'] == 'alter':
-            state['temp'][result_json['details'].split(':')[0]] = result_json['details'].split(':')[1]
-            print("temp: " + str(state['temp']))
-        elif result_json['action'] == 'end':
-            return state, result_json['details']
+        result = chat_invoke(msg, self.messages, "json")
+        kaggle_api_command = result['command']
+        print("kaggle api command: ", kaggle_api_command)
+
+        # run the kaggle api command
+        out, _ = cli_kaggle_docker(kaggle_api_command)
+
+        print("out: ", out)
+        # parse the output of the kaggle api command
+        out = parse_subprocess_output(out, "backend-kaggle-api")
+        print(out)
+
+        # Copy the docker tmp folder to the local tmp folder, in case files are downloaded
+        subprocess.run(["docker", "cp", "backend-kaggle-api-1:/tmp/", "./tmp"])
+
+        # store the output in the message history
+        if "error" in out.lower():
+            self.messages.append(SystemMessage(content="Here is the error. Use this to guide changes to the command: " + out))
         else:
-            # send error to the messages 
-            state['messages'].append(SystemMessage(content=f"Invalid action. Please try again. Here is the error: {str(e)}"))
-            continue
-
-def plan(state: DBFinderState) -> DBFinderState:
-    """Plans the search for a dataset."""
-    
-    plan_msg = HumanMessage(content=
-        db_finder_plan_search_prompt.format(query=state['query'], temp=" ".join([f"{k}: {v}" for k, v in state['temp'].items()]))
-    )
-    result = chat_invoke(plan_msg, state['messages'], "str", "df")
-    state['plan'] = result
-    state['messages'].append(HumanMessage(content="Now that we have a plan, let's proceed with the search?"))
-
-    return state
-
-def run_kaggle_api(state: DBFinderState, task: str) -> DBFinderState:
-    """Runs the kaggle api command in the code interpreter."""
-
-    # use LLM to generate kaggle command based on the task
-    msg = HumanMessage(content=db_finder_kaggle_api.format(
-        task=task,
-    ))
-
-    result = chat_invoke(msg, state['messages'], "json", "df")
-    kaggle_api_command = result['command']
-    print("kaggle api command: ", kaggle_api_command)
-
-    # run the kaggle api command
-    out, _ = cli_kaggle_docker(kaggle_api_command)
-
-    print("out: ", out)
-    # parse the output of the kaggle api command
-    out = parse_subprocess_output(out, "backend-kaggle-api")
-    print(out)
-
-    # Copy the docker tmp folder to the local tmp folder, in case files are downloaded
-    subprocess.run(["docker", "cp", "backend-kaggle-api-1:/tmp/", "./tmp"])
-
-    # store the output in the message history
-    if "error" in out.lower():
-        state['messages'].append(SystemMessage(content="Here is the error. Use this to guide changes to the command: " + out))
-    else:
-        state['messages'].append(SystemMessage(content="Here is the output of the command: " + out))
-
-    # return the state
-    return state
+            self.messages.append(SystemMessage(content="Here is the output of the command: " + out))
 
 # TESTING
 # agentic_loop(

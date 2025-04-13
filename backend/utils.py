@@ -9,23 +9,32 @@ from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 chat_main = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
 chat_df = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
 chat_ci = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
-chat_ollama = ChatOllama(model="llama3.2:latest")
+chat = ChatOllama(model="llama3.2:latest")
 
 # utility functions
-def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], output_format: str = "json", caller: str = "main"):
+def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], output_format: str = "json"):
     """
     This function is used to invoke the chat model. Seperate the chat session from message chain by passing new list in params.
-
+    Handles type safety within the function.
     """
 
-    chat = chat_ollama if caller == "main" else chat_df if caller == "df" else chat_ci
+    # chat = chat_ollama if caller == "main" else chat_df if caller == "df" else chat_ci
+    # ensure messages are maxxed at 20
+    if len(messages) > 20:
+        messages = messages[-20:]
 
+    msgs = messages.copy()
     if output_format == "json":
-        # Add a system message to ensure JSON output
-        system_message = SystemMessage(content="You must respond with valid JSON only. Do not include any text outside of the JSON structure.")
-        chain = chat
-        resp = chain.invoke(messages + [system_message, cur_message])
-        return JsonOutputParser().parse(resp.content.strip())
+        msgs.extend([system_message, cur_message])
+        while True:
+            # Add a system message to ensure JSON output
+            system_message = SystemMessage(content="You must respond with valid JSON only. Do not include any text outside of the JSON structure.")
+            resp = chat.invoke(msgs)
+            try:
+                return JsonOutputParser().parse(resp.content.strip())
+            except Exception as e:
+                msgs.append(SystemMessage(content="Error parsing JSON. Please try again. Invalid JSON object = " + resp.content.strip()))
+                continue
     elif output_format == "str":
         chain = chat | StrOutputParser()
         return chain.invoke(messages + [cur_message])
@@ -58,7 +67,7 @@ def parse_subprocess_output(output: str, compose_service : str) -> str:
              if "exited" not in file and file != ""]
     return "\n".join(files)
 
-def get_file_names(folder_name: str) -> str:
+def get_file_names(folder_name: str) -> list[str]:
     """Recursively grabs all files in a folder."""
     tmp_names = []
     for root, dirs, files in os.walk(folder_name):

@@ -3,8 +3,11 @@
 
 ## DATABASE FINDER AGENT ------------------------------------------------------------
 db_finder_loop_prompt =  """
-    You are a helpful assistant that can help with a task of finding a dataset on kaggle and downloading it .
-    Here's the user's query {query}. {plan_once}. Be optimal and efficient. 
+  Based on the above messages, are you getting closer to {query}?
+  You are an efficient helpful assistant that can help with a task of finding a dataset on kaggle and downloading it.
+  
+  Heres what we have access to:
+    {tmp_folder_names}
 
     You can do the following actions:
     - plan: a space to write your thoughts/plan-of-action
@@ -13,7 +16,7 @@ db_finder_loop_prompt =  """
     - end: completed task (END)
 
     Here's what your tmp folder looks like:
-    {tmp_folder}
+    
 
     Here is the info of the temp dict:
     {temp}
@@ -82,56 +85,34 @@ db_finder_plan_search_prompt = """
 
 
 ## CODE INTERPRETER AGENT ------------------------------------------------------------
-code_inter_init_prompt = """
-            You are an assistant that helps your user get closer to {user_query}
-            You have access to the following information:
-            - memory: {keys_of_mem} (for storing and accessing Python objects)
-            - facts: {kv_pairs_facts} (for storing string-based information)
-            - previous messages above
-
-            {plan}
-
-            You can perform the following actions:
-            - run: execute Python code or store something in memory
-            - store_fact: save a string fact for later reference
-            - plan: plan your thoughts
-            - end: return final answer or why you can't do this task (END)
-
-            RETURN IN THE FOLLOWING FORMAT:
-            {{
-                "action": "run" | "store_fact" | "plan" | "end",
-                "details": {{
-                    "code_goal": "Code goal to guide you towards" | null,
-                    "fact": "fact to be stored and it's unique key" | null,
-                    "final_answer": "Answer to return" | null
-                }},
-                "reason": "Explanation for taking this action"
-            }}
-        """
-
 code_inter_loop_prompt = """
-            Based on the above results, are you getting closer to {user_query}?
-            You also have access to the following information:
-            - memory: {keys_of_mem}
-            - facts: {kv_pairs_facts}
+      Based on the above messages, are you getting closer to {user_query}?
+      Here's what we have access to:
+      - files in memory: {keys_of_mem}
+      - facts: {kv_pairs_facts}
 
-            Here is your tmp folder:
-            {tmp_folder}
+      Here is your tmp folder:
+      {tmp_folder}
 
-            {plan}
-            What's the next best step?
+      Here's the exisitng plan: {plan}
 
-            RETURN IN THE FOLLOWING FORMAT:
-            {{
-                "action": "run" | "store_fact" | "plan" | "end",
-                "details": {{
-                    "code_goal": "Code goal to guide you towards" | null,
-                    "fact": "fact to be stored and it's unique key" | null,
-                    "final_answer": "Answer to return or Why you can't do this task" | null
-                }},
-                "reason": "Explanation for taking this action"
-            }}
-        """
+      What's the next best step?
+      {next_step_run}
+      {next_step_fact}
+      {next_step_plan}
+      - end: return final answer or why you can't do this task (END)
+
+      RETURN IN THE FOLLOWING FORMAT:
+      {{
+          "action": {available_actions},
+          "details": {{
+              {details_run}
+              {details_fact}
+              "final_answer": "Answer to return or Why you can't do this task" | null
+          }},
+          "reason": "Explanation for taking this action"
+      }}
+  """
 
 code_inter_run_code_prompt = """   
     To access a memory variable, here's the syntax:

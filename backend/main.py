@@ -4,7 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
 from agents.db_finder import agentic_loop as db_finder_agentic_loop, DBFinderState
-from agents.code_interpreter import agentic_loop as code_inter_agentic_loop, CodeInterpreterState
+from agents.code_interpreter import agentic_loop as code_inter_agentic_loop, CodeInterpreter
 from utils import chat_invoke
 from prompts import manager_stage_one_prompt, manager_stage_one_optimized_prompt, manager_stage_two_prompt
 class MainState(TypedDict):
@@ -34,16 +34,7 @@ def main(state: MainState):
         plan=""
     )
 
-    code_inter_state = CodeInterpreterState(
-        messages=[],
-        user_query="",
-        code="",
-        temp={},
-        facts={},
-        memory_location="tmp/memory.pkl",
-        code_file="tmp/codespace.py",
-        plan=""
-    )
+    code_inter = CodeInterpreter()
 
     while True:
         print("----------------------------------- manager agent -----------------------------------")
@@ -56,7 +47,7 @@ def main(state: MainState):
             user_query=state['user_query'],
             findings_so_far="\n".join(findings_so_far)
         ))
-        stage_one_json = chat_invoke(stage_one_msg, state['messages'], "json", "main")
+        stage_one_json = chat_invoke(stage_one_msg, state['messages'], "json")
 
         # store optimized messages of Human-AI interaction
         mini_chain.append(HumanMessage(content=manager_stage_one_optimized_prompt.format(user_query=state['user_query'])))
@@ -72,7 +63,7 @@ def main(state: MainState):
             manager_thinking=mini_chain
         ))
 
-        stage_two_json = chat_invoke(stage_two_msg, state['messages'], "json", "main")
+        stage_two_json = chat_invoke(stage_two_msg, state['messages'], "json")
         grade = int(stage_two_json['grade'])
         print("self grade : " + str(grade) + " because " + stage_two_json['reason'])
         
@@ -102,8 +93,8 @@ def main(state: MainState):
                 findings_so_far.append("db_finder_state : " + findings)
             # handle the code_interpreter_agent case
             elif stage_one_json['assistant'] == "code_interpreter_agent":
-                code_inter_state['user_query'] = stage_one_json['details']
-                code_inter_state, findings = code_inter_agentic_loop(code_inter_state)
+                code_inter.user_query = stage_one_json['details']
+                findings = code_inter.agentic_loop()
                 print("code_inter_state : " + findings)
                 state['messages'].append(HumanMessage(content="Here are the findings from the code_interpreter_agent: " + findings))
                 findings_so_far.append("code_inter_state : " + findings)
