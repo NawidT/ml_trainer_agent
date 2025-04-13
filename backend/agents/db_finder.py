@@ -10,13 +10,15 @@ from utils import cli_kaggle_docker, parse_subprocess_output, chat_invoke, get_f
 
 
 class DBFinder:
-    def __init__(self, messages=None, query="", temp=None, loop_results=None, plan=""):
+    def __init__(self, messages=None, query="", temp=None, plan=""):
         """Initialize the DBFinder with state attributes."""
         self.messages = messages or []
         self.query = query
         self.temp = temp or {}
-        self.loop_results = loop_results or []
         self.plan = plan
+        self.last_action = ""
+        self.available_actions = ["plan", "api", "alter", "end"]
+
 
     def agentic_loop(self):
         """
@@ -30,10 +32,18 @@ class DBFinder:
 
             prompt_inject = {
                 "query": self.query,
-                "plan_once": "Be sure to plan your approach only once" if len(self.messages) == 0 else "Here is your plan: " + self.plan,
-                "temp": " ".join([f"{k}: {v}" for k, v in self.temp.items()]),
-                "loop_stuck": "You are stuck in a loop. Please try to change your action" if len(self.loop_results) >= 2 and len(set(self.loop_results[-3:])) == 1 else "",
-                "tmp_folder_names": tmp_folders
+                # ----- plan related injects -----
+                "existing_plan": "Here is your plan: " + self.plan if self.plan != "" else "",
+                "next_step_plan" : "- plan: change the long-term plan" if self.last_action != "plan" else "",
+                # ----- api related injects -----
+                "next_step_api" : "- api: use the kaggle api to search for datasets, download them, or learn about its file structure" if self.last_action != "api" else "",
+                "details_api" : "'what to do using the api'" if self.last_action != "api" else "",
+                # ----- alter related injects -----
+                "next_step_alter" : "- alter: alter the key-values in the temp dict" if self.last_action != "alter" else "",
+                "details_alter" : "'key-value pair in format key: value'" if self.last_action != "alter" else "",
+               
+                "tmp_folder_names": tmp_folders,
+                "available_actions": " | ".join( f"'{a}'" for a in self.available_actions if a != self.last_action),
             }
 
             # run the central message
@@ -43,10 +53,10 @@ class DBFinder:
         
             # add the messages to the state in a custom way
             self.messages.append(HumanMessage(content="What is your action?"))
-            self.messages.append(AIMessage(content=str(result_json['action']) + " : " + str(result_json['reason'])))
-            print(result_json['action'] + " : " + result_json['reason'])
-
-            self.loop_results.append(result_json['action'])
+            self.messages.append(AIMessage(
+                content=f"I chose to {result_json['action']} because {result_json['reason']}"
+            ))
+            print(f"I chose to {result_json['action']} because {result_json['reason']}")
 
             # execute the actions
             if result_json['action'] == 'plan':
@@ -62,6 +72,7 @@ class DBFinder:
                 # send error to the messages 
                 self.messages.append(SystemMessage(content=f"Invalid action. Please try again. Here is the error: {str(e)}"))
                 continue
+            self.last_action = result_json['action']
 
     def plan_steps(self):
         """Plans the search for a dataset."""

@@ -25,10 +25,10 @@ def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], output_fo
 
     msgs = messages.copy()
     if output_format == "json":
+        # Add a system message to ensure JSON output
+        system_message = SystemMessage(content="You must respond with valid JSON only. Do not include any text outside of the JSON structure.")
         msgs.extend([system_message, cur_message])
         while True:
-            # Add a system message to ensure JSON output
-            system_message = SystemMessage(content="You must respond with valid JSON only. Do not include any text outside of the JSON structure.")
             resp = chat.invoke(msgs)
             try:
                 return JsonOutputParser().parse(resp.content.strip())

@@ -7,26 +7,21 @@ db_finder_loop_prompt =  """
   You are an efficient helpful assistant that can help with a task of finding a dataset on kaggle and downloading it.
   
   Heres what we have access to:
-    {tmp_folder_names}
+    tmp directory: {tmp_folder_names}
 
-    You can do the following actions:
-    - plan: a space to write your thoughts/plan-of-action
-    - api: use the kaggle api to search for datasets, download them, or learn about its file structure
-    - alter: alter the key-values in the temp dict
+  Here's the exisitng plan:
+  {existing_plan}
+
+  What's the next best step?
+    {next_step_plan}
+    {next_step_api}
+    {next_step_alter}
     - end: completed task (END)
-
-    Here's what your tmp folder looks like:
-    
-
-    Here is the info of the temp dict:
-    {temp}
-
-    {loop_stuck}
 
     RETURN IN FOLLOWING FORMAT:
     {{
-        "action": "plan" | "api" | "alter" | "end",
-        "details": "what to do using the api" | "key-value pair in format key: value" | "the end notes"
+        "action": {available_actions},
+        "details": {details_api} | {details_alter} | "the end notes" | null
         "reason": "reason for the action"
     }}
 """

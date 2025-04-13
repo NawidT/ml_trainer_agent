@@ -3,10 +3,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
-from agents.db_finder import agentic_loop as db_finder_agentic_loop, DBFinderState
-from agents.code_interpreter import agentic_loop as code_inter_agentic_loop, CodeInterpreter
+from agents.db_finder import DBFinder
+from agents.code_interpreter import CodeInterpreter
 from utils import chat_invoke
 from prompts import manager_stage_one_prompt, manager_stage_one_optimized_prompt, manager_stage_two_prompt
+
 class MainState(TypedDict):
     messages: list[BaseMessage]
     user_query: str
@@ -25,15 +26,8 @@ def main(state: MainState):
     This function is used to run the main loop.
     """
     refresh_memory()
-    # adding initial states for persistence throughout main loop
-    db_finder_state = DBFinderState(
-        messages=[],
-        query="",
-        temp={},
-        loop_results=[],
-        plan=""
-    )
-
+    # adding initial agents for persistence throughout main loop
+    db_finder = DBFinder()
     code_inter = CodeInterpreter()
 
     while True:
@@ -85,9 +79,9 @@ def main(state: MainState):
             
             # handle the database_finder_agent case
             if stage_one_json['assistant'] == "database_finder_agent":
-                db_finder_state['query'] = stage_one_json['details']
-                db_finder_state['plan'] = ""
-                db_finder_state, findings = db_finder_agentic_loop(db_finder_state)
+                db_finder.query = stage_one_json['details']
+                db_finder.plan = "" # reset the plan
+                findings = db_finder.agentic_loop()
                 print("db_finder_state : " + findings)
                 state['messages'].append(HumanMessage(content="Here are the findings from the database_finder_agent: " + findings))
                 findings_so_far.append("db_finder_state : " + findings)

@@ -20,6 +20,8 @@ class CodeInterpreter:
         self.plan = plan
         self.code_goal = ""
         self.last_action = ""
+        self.available_actions = ["run", "store_fact", "plan", "end"]
+
     def agentic_loop(self):
         """
         This function is used to run the agentic loop of the code interpreter.
@@ -33,7 +35,7 @@ class CodeInterpreter:
                 "user_query": self.user_query,
                 "keys_of_mem": get_memory_keys(self.memory_location),
                 "kv_pairs_facts": ", ".join([f"{k}: {v}" for k, v in self.facts.items()]),
-                "available_actions": " | ".join( f"'{a}'" for a in ["run", "store_fact", "plan", "end"] if a != self.last_action),
+                "available_actions": " | ".join( f"'{a}'" for a in self.available_actions if a != self.last_action),
                 # ----- plan related injects -----
                 "plan": "Here is the plan: " + self.plan if self.plan != "" else "",
                 "next_step_plan" : "- plan: change the long-term plan" if self.last_action != "plan" else "",
@@ -46,6 +48,7 @@ class CodeInterpreter:
                 "tmp_folder": tmp_folder
             }
 
+            # run the central message
             central_msg = HumanMessage(content=code_inter_loop_prompt.format(**prompt_inject))
           
             result_json = chat_invoke(central_msg, self.messages, "json", "ci")
@@ -57,6 +60,7 @@ class CodeInterpreter:
             ))
             print(f"I chose to {result_json['action']} because {result_json['reason']}")
 
+            # execute the actions
             if result_json['action'] == 'run':
                 self.code_goal = result_json['details']['code_goal']
                 self.run_code(self.code_goal)
