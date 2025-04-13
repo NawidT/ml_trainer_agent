@@ -46,11 +46,16 @@ def main(state: MainState):
     )
 
     while True:
+        print("----------------------------------- manager agent -----------------------------------")
         # used to store manager's thoughts until a decision is made
         mini_chain = []
+        findings_so_far = []
 
         # initiate stage one; manager agent makes initial decision
-        stage_one_msg = HumanMessage(content=manager_stage_one_prompt.format(user_query=state['user_query']))
+        stage_one_msg = HumanMessage(content=manager_stage_one_prompt.format(
+            user_query=state['user_query'],
+            findings_so_far="\n".join(findings_so_far)
+        ))
         stage_one_json = chat_invoke(stage_one_msg, state['messages'], "json", "main")
 
         # store optimized messages of Human-AI interaction
@@ -67,7 +72,7 @@ def main(state: MainState):
             manager_thinking=mini_chain
         ))
 
-        stage_two_json = chat_invoke([stage_two_msg], "json", "main")
+        stage_two_json = chat_invoke(stage_two_msg, state['messages'], "json", "main")
         grade = int(stage_two_json['grade'])
         print("self grade : " + str(grade) + " because " + stage_two_json['reason'])
         
@@ -85,19 +90,24 @@ def main(state: MainState):
                 content=f"I made a good decision. I chose the {stage_one_json['assistant']} because {stage_one_json['reason']}"
             ))
 
-            
             print("-----------------------------------" + stage_one_json['assistant'] + "-----------------------------------")
+            
+            # handle the database_finder_agent case
             if stage_one_json['assistant'] == "database_finder_agent":
                 db_finder_state['query'] = stage_one_json['details']
                 db_finder_state['plan'] = ""
                 db_finder_state, findings = db_finder_agentic_loop(db_finder_state)
                 print("db_finder_state : " + findings)
                 state['messages'].append(HumanMessage(content="Here are the findings from the database_finder_agent: " + findings))
+                findings_so_far.append("db_finder_state : " + findings)
+            # handle the code_interpreter_agent case
             elif stage_one_json['assistant'] == "code_interpreter_agent":
                 code_inter_state['user_query'] = stage_one_json['details']
                 code_inter_state, findings = code_inter_agentic_loop(code_inter_state)
                 print("code_inter_state : " + findings)
                 state['messages'].append(HumanMessage(content="Here are the findings from the code_interpreter_agent: " + findings))
+                findings_so_far.append("code_inter_state : " + findings)
+            # handle the end case
             elif stage_one_json['assistant'] == "END":
                 print("ENDING REASON : " + stage_one_json['reason'])
                 return stage_one_json['reason']

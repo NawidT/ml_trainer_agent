@@ -26,8 +26,6 @@ def agentic_loop(state: DBFinderState) -> tuple[DBFinderState, str]:
         state['messages'] = state['messages'][-20:]
 
         # run the central message
-        print("-- " + str(len(state['messages'])) + " --")
-        # print([str(m.content).strip() for m in state['messages'] if isinstance(m, BaseMessage)])
         central_msg = HumanMessage(content=
             db_finder_loop_prompt.format(
                 query=state['query'], 
@@ -38,10 +36,7 @@ def agentic_loop(state: DBFinderState) -> tuple[DBFinderState, str]:
             )
         )
 
-        temp = state['messages']
-        temp.append(central_msg)
-        result_json = chat_invoke(temp, "json", "df")
-        state['messages'].pop(len(state['messages']) - 1)
+        result_json = chat_invoke(central_msg, state['messages'], "json", "df")
     
         # add the messages to the state in a custom way
         state['messages'].append(HumanMessage(content="What is your action?"))
@@ -71,11 +66,7 @@ def plan(state: DBFinderState) -> DBFinderState:
     plan_msg = HumanMessage(content=
         db_finder_plan_search_prompt.format(query=state['query'], temp=" ".join([f"{k}: {v}" for k, v in state['temp'].items()]))
     )
-    temp = state['messages']
-    temp.append(plan_msg)
-    result = chat_invoke(temp, "str", "df")
-    state['messages'].pop(len(state['messages']) - 1)
-    state['messages'].append(AIMessage(content=result))
+    result = chat_invoke(plan_msg, state['messages'], "str", "df")
     state['plan'] = result
     state['messages'].append(HumanMessage(content="Now that we have a plan, let's proceed with the search?"))
 
@@ -89,22 +80,20 @@ def run_kaggle_api(state: DBFinderState, task: str) -> DBFinderState:
         task=task,
     ))
 
-    temp = state['messages']
-    temp.append(msg)
-    result = chat_invoke(temp, "json", "df")
-    state['messages'].pop(len(state['messages']) - 1)
+    result = chat_invoke(msg, state['messages'], "json", "df")
     kaggle_api_command = result['command']
     print("kaggle api command: ", kaggle_api_command)
 
     # run the kaggle api command
     out, _ = cli_kaggle_docker(kaggle_api_command)
 
+    print("out: ", out)
     # parse the output of the kaggle api command
-    out = parse_subprocess_output(out, "kaggle-api")
+    out = parse_subprocess_output(out, "backend-kaggle-api")
     print(out)
 
     # Copy the docker tmp folder to the local tmp folder, in case files are downloaded
-    subprocess.run(["docker", "cp", "ml_trainer_agent-kaggle-api-1:/tmp/", "./tmp"])
+    subprocess.run(["docker", "cp", "backend-kaggle-api-1:/tmp/", "./tmp"])
 
     # store the output in the message history
     if "error" in out.lower():

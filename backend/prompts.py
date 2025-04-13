@@ -61,6 +61,11 @@ options:
   -p, --path PATH       Folder where downloaded. Use the tmp folder to store the files.
   --unzip               Unzip the downloaded file. Will delete the zip file when completed.
 
+command examples: 
+- kaggle datasets list --search "house prices"
+- kaggle datasets files "abhishek/house-prices-advanced-regression-techniques"
+- kaggle datasets download "abhishek/house-prices-advanced-regression-techniques" -p tmp/house_prices
+
 YOU MUST RETURN IN THE FOLLOWING FORMAT:
 {{
     "command": "kaggle datasets <your_command>"
@@ -128,7 +133,7 @@ code_inter_loop_prompt = """
             }}
         """
 
-code_inter_run_code = """   
+code_inter_run_code_prompt = """   
     To access a memory variable, here's the syntax:
     - our_dict = pickle.load(open('{memory_location}', 'rb'))
     - our_dict['variable_name']
@@ -155,15 +160,18 @@ manager_stage_one_prompt = """
       You are a helpful manager who controls two assistants.
       The first assistant is a database_finder_agent that is a kaggle api expert.
       The second assistant is a code_interpreter_agent that is a python programmer.
-      You will be given a user query.
+      You will be given a user query. What should our next task be?
       
       user query : {user_query} 
-      Use the previous messages.                  
+      Use the previous messages.
+      Here's what we have done so far: {findings_so_far}
 
+      YOU MUST RESPOND WITH VALID JSON ONLY. DO NOT INCLUDE ANY TEXT OUTSIDE OF THE JSON STRUCTURE.
+      
       RETURN IN THE FOLLOWING FORMAT:
       {{
       "assistant": "database_finder_agent" | "code_interpreter_agent" | "END",
-      "details": "details of the exact action the assistant needs to take"
+      "details": "details of the exact action the assistant needs to take",
       "reason": "reason for choosing the assistant or ending"
       }}                        
       
@@ -175,14 +183,16 @@ manager_stage_one_optimized_prompt = """
 """
 
 manager_stage_two_prompt = """
-  Your task is to audit the work of the manager and grade its work to make sure it made the best possible decision.
+  Your task is to audit the work of the manager and grade it ensuring the best possible decision.
   
-  grading scale : 1 being the worst and 5 being the best.
+  grading scale : 1 (worst) to 5 (best).
   chat history : {messages}
   user query : {user_query}
   manager's decision : {manager_decision}
   manager's thinking : {manager_thinking}
                           
+  YOU MUST RESPOND WITH VALID JSON ONLY. DO NOT INCLUDE ANY TEXT OUTSIDE OF THE JSON STRUCTURE.
+      
   RETURN IN THE FOLLOWING FORMAT:
   {{
   "grade": "1" | "2" | "3" | "4" | "5",
