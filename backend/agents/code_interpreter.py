@@ -132,28 +132,40 @@ class CodeInterpreter:
         )
         try:
             out, _ = interpreter.stdout, interpreter.stderr
-            out = parse_subprocess_output(out, "code-interpreter")
+            out = parse_subprocess_output(out, "backend-code-interpreter")
             print(out)
+            self.messages.append(SystemMessage(content="Here is the output of the code: " + out))
             await self.send_frontend_message("python_agent", "cli", out)
         except Exception as e:
             print(e)
             self.messages.append(SystemMessage(content="Error running code. Please try again. " + str(e)))
-            return
-        # grab the output/findings of the code and store in message history
-        self.messages.append(SystemMessage(content="Here is the output of the code: " + out))
+            await self.send_frontend_message("python_agent", "cli", str(e))
+            # ensure the original code goal is still the first line of the code goal + new error
+            self.code_goal = self.code_goal.split("\n")[0] + "\n Fix this error: " + str(e)
 
-    async def store_fact(self, fact):
+
+    async def store_fact(self, fact : str):
         """Stores the fact in the state."""
 
         # rewrite the fact string as a key:value pair
         msg = HumanMessage(content=f"""
             Using the following information, convert the fact into a key:value pair. 
             fact: {fact}.
-            Make sure the key is unique. Here are the existing keys: {self.facts.keys()}.
-            RETURN ONLY THE KEY:VALUE PAIR AS A STRING
+            Make sure the key is unique. 
+            Here are the existing keys: {self.facts.keys()}.
+            RETURN ONLY ONE KEY:VALUE PAIR AS A STRING
         """)
 
         kv_pair = await chat_invoke(msg, self.messages, "str")
+
+        if kv_pair.startswith("```python"):
+            kv_pair = kv_pair.replace("```python", "", 1)
+        elif kv_pair.startswith("```plaintext"):
+            kv_pair = kv_pair.replace("```plaintext", "", 1)
+        if kv_pair.endswith("```"):
+            kv_pair = kv_pair.rsplit("```", 1)[0]
+        kv_pair = kv_pair.strip()
+
         print(kv_pair)
 
         # add the fact to the state
