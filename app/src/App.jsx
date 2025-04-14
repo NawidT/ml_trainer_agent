@@ -25,17 +25,16 @@ function App() {
 
     ws.current.onmessage = (event) => {
       let data = JSON.parse(event.data)
-      console.log(typeof data)
       // Handle different types of messages based on the agent
       switch(data["agent"]) {
         case 'manager_agent':
-          setManagerChat(prev => [...prev, { role: 'manager_agent', type: data["type"], content: data["message"] }])
+          setManagerChat(prev => [...prev, { role: 'manager_agent', type: data["type"], content: data["message"], date: Date.now() }])
           break
         case 'kaggle_agent':
-          setKaggleChat(prev => [...prev, { role: 'kaggle_agent', type: data["type"], content: data["message"] }])
+          setKaggleChat(prev => [...prev, { role: 'kaggle_agent', type: data["type"], content: data["message"], date: Date.now() }])
           break
         case 'python_agent':
-          setPythonChat(prev => [...prev, { role: 'python_agent', type: data["type"], content: data["message"] }])
+          setPythonChat(prev => [...prev, { role: 'python_agent', type: data["type"], content: data["message"], date: Date.now() }])
           break
         default:
           console.log('Unknown agent type:', data)

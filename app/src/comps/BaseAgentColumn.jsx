@@ -9,7 +9,11 @@ const BaseAgentColumn = ({ title, messages }) => {
       <div className="bg-gray-800 text-white p-4 text-center font-bold">
         {title}
       </div>
-      <div className="flex-1 overflow-y-auto w-full flex flex-col items-center my-2 space-y-4">
+      <div className="flex-1 overflow-y-auto w-full flex flex-col items-center my-2 space-y-4" ref={(el) => {
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+      }}>
         <div className="flex flex-col w-full py-2 items-center rounded-lg">
           {messages.length > 0 && messages.map((message, index) => (
             <div 

@@ -10,7 +10,7 @@ from prompts import code_inter_run_code_prompt, code_inter_loop_prompt
 
 class CodeInterpreter:
     def __init__(self, messages=None, memory_location="tmp/memory.pkl", facts=None, 
-                 code_file="tmp/codespace.py", user_query="", plan=""):
+                 code_file="tmp/codespace.py", user_query="", plan="", send_frontend_message=None):
         """Initialize the CodeInterpreter with state attributes."""
         self.messages = messages or []
         self.memory_location = memory_location  # stores memory in pickle file, can be accessed by generated subprocess
@@ -21,8 +21,9 @@ class CodeInterpreter:
         self.code_goal = ""
         self.last_action = ""
         self.available_actions = ["run", "store_fact", "plan", "end"]
+        self.send_frontend_message = send_frontend_message
 
-    def agentic_loop(self):
+    async def agentic_loop(self):
         """
         This function is used to run the agentic loop of the code interpreter.
         """
@@ -44,14 +45,14 @@ class CodeInterpreter:
                 "details_run" : "'code_goal': 'purpose of the code to be executed' | null" if self.last_action != "run" else "",
                 # ----- fact related injects -----
                 "next_step_fact" : "- store_fact: save a string fact for later reference" if self.last_action != "store_fact" else "",
-                "details_fact" : "'fact': 'fact to be stored and it's unique key' | null" if self.last_action != "store_fact" else "",
+                "details_fact" : "'fact': 'fact value' return as ONLY string | null" if self.last_action != "store_fact" else "",
                 "tmp_folder": tmp_folder
             }
 
             # run the central message
             central_msg = HumanMessage(content=code_inter_loop_prompt.format(**prompt_inject))
           
-            result_json = chat_invoke(central_msg, self.messages, "json", "ci")
+            result_json = await chat_invoke(central_msg, self.messages, "json")
 
             # add the messages to the state in an efficient way
             self.messages.append(HumanMessage(content="What is your action?"))
@@ -59,21 +60,21 @@ class CodeInterpreter:
                 content=f"I chose to {result_json['action']} because {result_json['reason']}"
             ))
             print(f"I chose to {result_json['action']} because {result_json['reason']}")
-
+            
             # execute the actions
             if result_json['action'] == 'run':
                 self.code_goal = result_json['details']['code_goal']
-                self.run_code(self.code_goal)
+                await self.run_code(self.code_goal)
 
             elif result_json['action'] == 'store_fact':
                 if result_json['details'] is not None and result_json['details']['fact'] is not None and type(result_json['details']['fact']) == str:
-                    self.store_fact(result_json['details']['fact'])
+                    await self.store_fact(result_json['details']['fact'])
                 else:
                     self.messages.append(SystemMessage(content="Invalid fact. Please try again."))
                     continue
 
             elif result_json['action'] == 'plan':
-                self.plan_steps()
+                await self.plan_steps()
 
             elif result_json['action'] == 'end':
                 if result_json['details'] is not None and result_json['details']['final_answer'] is not None:
@@ -83,16 +84,18 @@ class CodeInterpreter:
                     continue
             self.last_action = result_json['action']
         
-    def plan_steps(self):
+    async def plan_steps(self):
         """Plans the search for the kaggle dataset."""
 
         # use LLM to generate a plan for the search
         msg = HumanMessage(content="Based on the above messages, use this space to write a short plan for your thoughts to proceed with the next steps.")
-        result = chat_invoke(msg, self.messages, "str")
+        result = await chat_invoke(msg, self.messages, "str")
         # add the plan to the state and it will be used in future loop messages until plan changes
         self.plan = result
-        
-    def run_code(self, code_goal):
+        await self.send_frontend_message("python_agent", "text", f"Plan: {result}")
+    
+    
+    async def run_code(self, code_goal):
         """Runs the code in the code interpreter and potentially stores the result in memory."""
 
         # pass the code thru another LLM with more detailed information and request changes
@@ -103,9 +106,8 @@ class CodeInterpreter:
             memory_location=self.memory_location,
             tmp_folder=tmp_folder
         ))
-
         
-        generated_code = chat_invoke(more_info_msg, self.messages, "str")
+        generated_code = await chat_invoke(more_info_msg, self.messages, "str")
         self.messages.append(AIMessage(content=generated_code))
 
         if generated_code.startswith("```python"):
@@ -114,6 +116,7 @@ class CodeInterpreter:
             generated_code = generated_code.rsplit("```", 1)[0]
 
         print(generated_code)
+        await self.send_frontend_message("python_agent", "python", generated_code)
 
         # save the code in a python file (codespace.py)
         with open(self.code_file, 'w') as f:
@@ -131,6 +134,7 @@ class CodeInterpreter:
             out, _ = interpreter.stdout, interpreter.stderr
             out = parse_subprocess_output(out, "code-interpreter")
             print(out)
+            await self.send_frontend_message("python_agent", "cli", out)
         except Exception as e:
             print(e)
             self.messages.append(SystemMessage(content="Error running code. Please try again. " + str(e)))
@@ -138,7 +142,7 @@ class CodeInterpreter:
         # grab the output/findings of the code and store in message history
         self.messages.append(SystemMessage(content="Here is the output of the code: " + out))
 
-    def store_fact(self, fact):
+    async def store_fact(self, fact):
         """Stores the fact in the state."""
 
         # rewrite the fact string as a key:value pair
@@ -149,7 +153,7 @@ class CodeInterpreter:
             RETURN ONLY THE KEY:VALUE PAIR AS A STRING
         """)
 
-        kv_pair = chat_invoke(msg, self.messages, "str")
+        kv_pair = await chat_invoke(msg, self.messages, "str")
         print(kv_pair)
 
         # add the fact to the state
@@ -157,7 +161,7 @@ class CodeInterpreter:
 
         # show all the facts
         print(self.facts)
-
+        await self.send_frontend_message("python_agent", "text", f"StoredFacts: {self.facts}")
 # TESTING
 # agentic_loop(
 #     {

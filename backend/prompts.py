@@ -76,6 +76,7 @@ db_finder_plan_search_prompt = """
         - the temp dict: {temp}
 
         You also have access to previous messages. Use this space to write your thoughts. Return in plain english and keep it short.
+        Keep it really short.
         """
 
 
@@ -147,8 +148,8 @@ manager_stage_one_prompt = """
       RETURN IN THE FOLLOWING FORMAT:
       {{
       "assistant": "database_finder_agent" | "code_interpreter_agent" | "END",
-      "details": "details of the exact action the assistant needs to take",
-      "reason": "reason for choosing the assistant or ending"
+      "details": "details of the exact action the assistant needs to take | what is the final answer to {user_query} | null",
+      "reason": "reason for choosing the assistant | reason for ending"
       }}                        
       
   """

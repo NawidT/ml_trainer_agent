@@ -10,7 +10,7 @@ from utils import cli_kaggle_docker, parse_subprocess_output, chat_invoke, get_f
 
 
 class DBFinder:
-    def __init__(self, messages=None, query="", temp=None, plan=""):
+    def __init__(self, messages=None, query="", temp=None, plan="", send_frontend_message=None):
         """Initialize the DBFinder with state attributes."""
         self.messages = messages or []
         self.query = query
@@ -18,9 +18,9 @@ class DBFinder:
         self.plan = plan
         self.last_action = ""
         self.available_actions = ["plan", "api", "alter", "end"]
+        self.send_frontend_message = send_frontend_message
 
-
-    def agentic_loop(self):
+    async def agentic_loop(self):
         """
         This function is used to run the agentic loop. It will select between running kaggle api search, altering the temp dict in the state, or selecting a dataset (END).
         """
@@ -39,8 +39,8 @@ class DBFinder:
                 "next_step_api" : "- api: use the kaggle api to search for datasets, download them, or learn about its file structure" if self.last_action != "api" else "",
                 "details_api" : "'what to do using the api'" if self.last_action != "api" else "",
                 # ----- alter related injects -----
-                "next_step_alter" : "- alter: alter the key-values in the temp dict" if self.last_action != "alter" else "",
-                "details_alter" : "'key-value pair in format key: value'" if self.last_action != "alter" else "",
+                "next_step_alter" : "- alter: alter a key-value pair in the temp dict" if self.last_action != "alter" else "",
+                "details_alter" : "only one key-value pair in exact string format 'key: value'" if self.last_action != "alter" else "",
                
                 "tmp_folder_names": tmp_folders,
                 "available_actions": " | ".join( f"'{a}'" for a in self.available_actions if a != self.last_action),
@@ -49,7 +49,7 @@ class DBFinder:
             # run the central message
             central_msg = HumanMessage(content=db_finder_loop_prompt.format(**prompt_inject))
 
-            result_json = chat_invoke(central_msg, self.messages, "json")
+            result_json = await chat_invoke(central_msg, self.messages, "json")
         
             # add the messages to the state in a custom way
             self.messages.append(HumanMessage(content="What is your action?"))
@@ -57,34 +57,37 @@ class DBFinder:
                 content=f"I chose to {result_json['action']} because {result_json['reason']}"
             ))
             print(f"I chose to {result_json['action']} because {result_json['reason']}")
-
+            
             # execute the actions
             if result_json['action'] == 'plan':
-                self.plan_steps()
+                await self.plan_steps()
             elif result_json['action'] == 'api':
-                self.run_kaggle_api(result_json['details'])
+                await self.run_kaggle_api(result_json['details'])
             elif result_json['action'] == 'alter':
-                self.temp[result_json['details'].split(':')[0]] = result_json['details'].split(':')[1]
+                print("result_json['details']: ", result_json['details'])
+                key, value = result_json['details'].split(':')
+                self.temp[key] = value
                 print("temp: " + str(self.temp))
             elif result_json['action'] == 'end':
-                return self, result_json['details']
+                return result_json['details']
             else:
                 # send error to the messages 
                 self.messages.append(SystemMessage(content=f"Invalid action. Please try again. Here is the error: {str(e)}"))
                 continue
             self.last_action = result_json['action']
 
-    def plan_steps(self):
+    async def plan_steps(self):
         """Plans the search for a dataset."""
         
         plan_msg = HumanMessage(content=
             db_finder_plan_search_prompt.format(query=self.query, temp=" ".join([f"{k}: {v}" for k, v in self.temp.items()]))
         )
-        result = chat_invoke(plan_msg, self.messages, "str")
+        result = await chat_invoke(plan_msg, self.messages, "str")
         self.plan = result
         self.messages.append(HumanMessage(content="Now that we have a plan, let's proceed with the search?"))
+        await self.send_frontend_message("kaggle_agent", "text", f"Plan: {result}")
 
-    def run_kaggle_api(self, task):
+    async def run_kaggle_api(self, task):
         """Runs the kaggle api command in the code interpreter."""
 
         # use LLM to generate kaggle command based on the task
@@ -92,17 +95,17 @@ class DBFinder:
             task=task,
         ))
 
-        result = chat_invoke(msg, self.messages, "json")
+        result = await chat_invoke(msg, self.messages, "json")
         kaggle_api_command = result['command']
         print("kaggle api command: ", kaggle_api_command)
-
+        await self.send_frontend_message("kaggle_agent", "cli", kaggle_api_command)
         # run the kaggle api command
         out, _ = cli_kaggle_docker(kaggle_api_command)
 
-        print("out: ", out)
         # parse the output of the kaggle api command
         out = parse_subprocess_output(out, "backend-kaggle-api")
         print(out)
+        await self.send_frontend_message("kaggle_agent", "cli", out)
 
         # Copy the docker tmp folder to the local tmp folder, in case files are downloaded
         subprocess.run(["docker", "cp", "backend-kaggle-api-1:/tmp/", "./tmp"])

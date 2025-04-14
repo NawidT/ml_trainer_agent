@@ -56,21 +56,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 if "query" in message_data:
                     # Update the session state with the new query
                     
-                    
-                    # Send the result back to the client
-                    # await manager.send_message(session_id, json.dumps({
-                    #     "agent": "manager",
-                    #     "type": "text",
-                    #     "message": "Running..."
-                    # })) 
-                    
                     # Use asyncio to run the blocking function in a thread pool. 
                     # Offloads the blocking function to a thread.
                     manager_agent = manager.session_states[session_id][1]
                     if isinstance(manager_agent, ManagerAgent):
-                        await manager_agent.chat(message_data["query"])
-                    else:
-                        raise ValueError("Manager agent is not a valid ManagerAgent object")
+                        manager_agent.user_query = message_data["query"]
+                        await manager_agent.main()
                     
                 else:
                     await manager.send_message(session_id, json.dumps({

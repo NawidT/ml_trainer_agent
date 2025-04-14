@@ -5,41 +5,43 @@ import subprocess
 import pickle
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+import asyncio
 
-chat_main = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
-chat_df = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
-chat_ci = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
-chat = ChatOllama(model="llama3.2:latest")
+# chat = ChatOllama(model="llama3.2:latest")
+chat = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
 
 # utility functions
-def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], output_format: str = "json"):
+async def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], output_format: str = "json"):
     """
     This function is used to invoke the chat model. Seperate the chat session from message chain by passing new list in params.
     Handles type safety within the function.
     """
+    def run_chat(messages : list[BaseMessage]):
+        # chat = chat_ollama if caller == "main" else chat_df if caller == "df" else chat_ci
+        # ensure messages are maxxed at 20
+        if len(messages) > 20:
+            messages = messages[-20:]
 
-    # chat = chat_ollama if caller == "main" else chat_df if caller == "df" else chat_ci
-    # ensure messages are maxxed at 20
-    if len(messages) > 20:
-        messages = messages[-20:]
-
-    msgs = messages.copy()
-    if output_format == "json":
-        # Add a system message to ensure JSON output
-        system_message = SystemMessage(content="You must respond with valid JSON only. Do not include any text outside of the JSON structure.")
-        msgs.extend([system_message, cur_message])
-        while True:
-            resp = chat.invoke(msgs)
-            try:
-                return JsonOutputParser().parse(resp.content.strip())
-            except Exception as e:
-                msgs.append(SystemMessage(content="Error parsing JSON. Please try again. Invalid JSON object = " + resp.content.strip()))
-                continue
-    elif output_format == "str":
-        chain = chat | StrOutputParser()
-        return chain.invoke(messages + [cur_message])
-    else:
-        raise ValueError("Invalid output format. Please use 'json' or 'str'.")
+        msgs = messages.copy()
+        if output_format == "json":
+            # Add a system message to ensure JSON output
+            system_message = SystemMessage(content="You must respond with valid JSON only. Do not include any text outside of the JSON structure.")
+            msgs.extend([system_message, cur_message])
+            while True:
+                resp = chat.invoke(msgs)
+                try:
+                    return JsonOutputParser().parse(resp.content.strip())
+                except Exception as e:
+                    msgs.append(SystemMessage(content="Error parsing JSON. Please try again. Invalid JSON object = " + resp.content.strip()))
+                    continue
+        elif output_format == "str":
+            chain = chat | StrOutputParser()
+            return chain.invoke(messages + [cur_message])
+        else:
+            raise ValueError("Invalid output format. Please use 'json' or 'str'.")
+    
+    # run the chat in a separate thread
+    return await asyncio.to_thread(run_chat, messages)
  
 def cli_kaggle_docker(command: str) -> str:
     """
