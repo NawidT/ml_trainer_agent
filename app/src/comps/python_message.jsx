@@ -40,7 +40,7 @@ const PythonMessage = ({ code, isRunning }) => {
       </div>
       
       {/* Code content */}
-      <pre className="text-gray-100 overflow-x-auto p-2 font-mono text-sm">
+      <pre className="text-gray-100 overflow-x-auto p-2 font-mono text-[10px]">
         <code>{code}</code>
       </pre>
       

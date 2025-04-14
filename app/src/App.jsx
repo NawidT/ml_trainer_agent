@@ -1,71 +1,136 @@
-import { useState } from 'react'
-import PythonMessage from './comps/python_message'
-import TextMessage from './comps/text_message'
-import CLIOutMessage from './comps/cliout_message'
-
-
+import { useState, useEffect, useRef } from 'react'
+import BaseAgentColumn from './comps/BaseAgentColumn'
 
 function App() {
-  // state to manage the chat history
-  const [chatHistory, setChatHistory] = useState([
-    {
-      role: 'ai',
-      type: 'cli',
-      content: 'Hello! I am the ML Trainer Agent. How can I help you today?'
-    }])
-  const [curUserTestm, setCurUserTestm] = useState('')
+  // state to manage the chat history for each agent
+  const [managerChat, setManagerChat] = useState([])
+  const [kaggleChat, setKaggleChat] = useState([])
+  const [pythonChat, setPythonChat] = useState([])
+  const [curUserMessage, setCurUserMessage] = useState('')
+  const [loadingScreen, setLoadingScreen] = useState(true)
+  const [wsConnected, setWsConnected] = useState(false)
+  
+  // Create a ref to store the WebSocket instance
+  const ws = useRef(null)
+
+  useEffect(() => {
+    // Initialize WebSocket connection
+    ws.current = new WebSocket('ws://localhost:8000')
+
+    // WebSocket event handlers
+    ws.current.onopen = () => {
+      console.log('WebSocket Connected')
+      setWsConnected(true)
+    }
+
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      // Handle different types of messages based on the agent
+      switch(data.agent) {
+        case 'manager':
+          setManagerChat(prev => [...prev, { role: 'managerAgent', type: data.type, content: data.message }])
+          break
+        case 'kaggle':
+          setKaggleChat(prev => [...prev, { role: 'kaggleAgent', type: data.type, content: data.message }])
+          break
+        case 'python':
+          setPythonChat(prev => [...prev, { role: 'pythonAgent', type: data.type, content: data.message }])
+          break
+        default:
+          console.log('Unknown agent type:', data)
+      }
+    }
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      setWsConnected(false)
+    }
+
+    ws.current.onclose = () => {
+      console.log('WebSocket Disconnected')
+      setWsConnected(false)
+    }
+
+    // Cleanup on component unmount
+    return () => {
+      if (ws.current) {
+        ws.current.close()
+      }
+    }
+  }, [])
+
+  
+  const InitialScreen = () => {
+    const handleChangingLoadingScreen = () => {
+      setLoadingScreen(false)
+      // wait 2 seconds before appending manager init message
+      setTimeout(() => {
+        setManagerChat([...managerChat, { role: 'managerAgent', type: 'text', content: 'Hello! I am the Manager Agent. How can I help you today?' }])
+      }, 1500)
+    }
+    return (
+      <div className="flex flex-col h-screen w-screen">
+        <div className="flex flex-row w-full h-[90%]">
+          <div className="flex flex-col w-full h-full justify-center space-y-10 items-center">
+            <h1 className="text-4xl font-bold">Welcome to the Multi Agent ML Checking</h1>
+            <p className="text-lg">We can quickly grab data from kaggle check feasibility of an ML project</p>
+            <button 
+              className="bg-blue-400 text-white px-6 py-2 rounded-lg hover:bg-blue-800 animate-bounce" 
+              onClick={handleChangingLoadingScreen}
+            >Start</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleUserMessageSubmit = (e) => {
     e.preventDefault();
-    const message = curUserTestm
+    const message = curUserMessage
     if (message.trim() === '') {
       return;
     }
-    setChatHistory([...chatHistory, { role: 'user', content: message, type: 'text' }]);
-    console.log(chatHistory);
-    setCurUserTestm("")
+    
+    // Send message to WebSocket server
+    if (ws.current && wsConnected) {
+      ws.current.send(JSON.stringify({
+        agent: 'manager',
+        user_query: message
+      }))
+    }
+    
+    setManagerChat([...managerChat, { role: 'user', content: message, type: 'text' }]);
+    setCurUserMessage("")
   }
 
   return (
     <>
-      <div className="flex flex-col h-screen w-screen">
-        <div className="flex-1 overflow-y-auto w-full flex flex-col items-center my-2 space-y-4 px-4">
-          <div className="flex flex-col w-full p-4 items-center rounded-lg shadow-lg">
-            {chatHistory.length > 0 && chatHistory.map((message, index) => (
-              <div key={index} className={`flex w-5/10 min-h-[60px] justify-center align-center rounded-lg border-blue-500 border-2 mb-3 ${message.role === 'ai' ? 'bg-pink-800' : 'bg-purple-500' }`}>
-              {
-              message.type === 'text' ? 
-                <TextMessage message={message.content}/> : 
-                message.type === 'cli' ? 
-                  <CLIOutMessage output={message.content}/> : 
-                  <PythonMessage code={message.content} isRunning={false}/>
-              }
-              </div>
-            ))}
-            {chatHistory.length === 0 && (
-              <div className="flex flex-col justify-center items-center">
-                  No messages yet
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* place the form in the bottom of the chat container */}
-        <div className="flex flex-col justify-end h-1/20 w-full mb-3">
-          <form className="flex flex-row align-center justify-center w-full h-full space-x-2" onSubmit={handleUserMessageSubmit}>
-            <input
-              type="text"
-              placeholder="Type your message here..."
-              className="w-1/2 px-2 rounded-lg border-2 border-blue-200"
-              value={curUserTestm}
-              onChange={(e) => setCurUserTestm(e.target.value)}
-            />
-            <button className="bg-blue-500 text-white px-4 py-2 rounded-lg" type="submit">
-              Send
-            </button>
-          </form>
-        </div>
+    {!loadingScreen ? <div className="flex flex-col h-screen w-screen">
+      <div className="flex flex-row w-full h-[90%]">
+        <BaseAgentColumn title="Manager Agent" messages={managerChat} />
+        <BaseAgentColumn title="Kaggle Agent" messages={kaggleChat} />
+        <BaseAgentColumn title="Python Agent" messages={pythonChat} />
       </div>
+      
+      {/* Unified input box at the bottom */}
+      <div className="flex flex-col justify-end h-20 w-full p-4 bg-gray-100">
+        <form className="flex flex-row align-center justify-center w-full h-full space-x-2" onSubmit={handleUserMessageSubmit}>
+          <input
+            type="text"
+            placeholder="Type your message here..."
+            className="w-1/2 px-4 py-2 rounded-lg border-2 border-blue-200 focus:outline-none focus:border-blue-500"
+            value={curUserMessage}
+            onChange={(e) => setCurUserMessage(e.target.value)}
+          />
+          <button 
+            className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors" 
+            type="submit"
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </div> : <InitialScreen />}
     </>
   )
 }

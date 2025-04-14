@@ -5,6 +5,8 @@ backend/kaggle_file/
 backend/__pycache__/
 backend/tmp
 
+.DS_Store
+
 app/node_modules/
 # Logs
 app/logs
