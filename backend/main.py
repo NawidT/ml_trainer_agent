@@ -25,16 +25,18 @@ class ManagerAgent:
         with open("tmp/memory.pkl", "w") as f:
             pass
 
-    def chat(self, message):
+    async def chat(self, message):
         """
         This function is used to chat with the user. Used as a heartbeat to test LLM and websocket connection.
         """
         result = chat_invoke(message, [], "str")
-        self.websocket_send_message(self.session_id, json.dumps({
+        await self.websocket_send_message(self.session_id, {
             "agent": "manager_agent",
+            "type": "text",
             "status": "running",
             "message": result
-        }))
+        })
+        
 
     def main(self):
         """

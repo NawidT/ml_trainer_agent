@@ -6,4 +6,4 @@ langchain-openai
 langchain-community
 langchain-ollama
 fastapi
-uvicorn
+uvicorn[standard]

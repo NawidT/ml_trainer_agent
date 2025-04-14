@@ -15,7 +15,7 @@ function App() {
 
   useEffect(() => {
     // Initialize WebSocket connection
-    ws.current = new WebSocket('ws://localhost:8000')
+    ws.current = new WebSocket('ws://localhost:8000/ws')
 
     // WebSocket event handlers
     ws.current.onopen = () => {
@@ -24,17 +24,18 @@ function App() {
     }
 
     ws.current.onmessage = (event) => {
-      const data = JSON.parse(event.data)
+      let data = JSON.parse(event.data)
+      console.log(typeof data)
       // Handle different types of messages based on the agent
-      switch(data.agent) {
-        case 'manager':
-          setManagerChat(prev => [...prev, { role: 'managerAgent', type: data.type, content: data.message }])
+      switch(data["agent"]) {
+        case 'manager_agent':
+          setManagerChat(prev => [...prev, { role: 'manager_agent', type: data["type"], content: data["message"] }])
           break
-        case 'kaggle':
-          setKaggleChat(prev => [...prev, { role: 'kaggleAgent', type: data.type, content: data.message }])
+        case 'kaggle_agent':
+          setKaggleChat(prev => [...prev, { role: 'kaggle_agent', type: data["type"], content: data["message"] }])
           break
-        case 'python':
-          setPythonChat(prev => [...prev, { role: 'pythonAgent', type: data.type, content: data.message }])
+        case 'python_agent':
+          setPythonChat(prev => [...prev, { role: 'python_agent', type: data["type"], content: data["message"] }])
           break
         default:
           console.log('Unknown agent type:', data)
@@ -65,7 +66,7 @@ function App() {
       setLoadingScreen(false)
       // wait 2 seconds before appending manager init message
       setTimeout(() => {
-        setManagerChat([...managerChat, { role: 'managerAgent', type: 'text', content: 'Hello! I am the Manager Agent. How can I help you today?' }])
+        setManagerChat([...managerChat, { role: 'manager_agent', type: 'text', content: 'Hello! I am the Manager Agent. How can I help you today?' }])
       }, 1500)
     }
     return (
@@ -84,6 +85,17 @@ function App() {
     )
   }
 
+  const NavBar = () => {
+    // have the navbar display whether the connection is stable or not
+    return (
+      <div className="flex flex-row w-full h-10 bg-blue-600">
+        <div className="flex flex-row w-full h-full justify-start items-center px-4">
+          <p className="text-sm text-white">Connection: {wsConnected ? 'Connected' : 'Disconnected'}</p>
+        </div>
+      </div>
+    )
+  }
+
   const handleUserMessageSubmit = (e) => {
     e.preventDefault();
     const message = curUserMessage
@@ -95,7 +107,7 @@ function App() {
     if (ws.current && wsConnected) {
       ws.current.send(JSON.stringify({
         agent: 'manager',
-        user_query: message
+        query: message
       }))
     }
     
@@ -106,6 +118,7 @@ function App() {
   return (
     <>
     {!loadingScreen ? <div className="flex flex-col h-screen w-screen">
+      <NavBar />
       <div className="flex flex-row w-full h-[90%]">
         <BaseAgentColumn title="Manager Agent" messages={managerChat} />
         <BaseAgentColumn title="Kaggle Agent" messages={kaggleChat} />
