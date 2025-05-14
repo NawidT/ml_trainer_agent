@@ -1,7 +1,12 @@
+# Problem Statement
+
+As an ML Engineer, upon starting projects, we often have to conduct initial research regarding things like 
+- data avaialable online
+- important parameters across multiple datasets
 
 # ML Trainer Agent
 
-An intelligent agent system that helps automate the machine learning workflow - from dataset discovery to model training and evaluation.
+An intelligent agent system that helps automate a subsection of the machine learning workflow.
 
 ## Overview
 

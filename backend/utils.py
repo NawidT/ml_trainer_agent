@@ -45,7 +45,8 @@ async def chat_invoke(cur_message: BaseMessage, messages: list[BaseMessage], out
  
 def cli_kaggle_docker(command: str) -> str:
     """
-    This function is used to run the kaggle api in the custom docker container.
+    Runs kaggle based commands on the Kaggle API via a custom Dockerized container.
+    Spins up a container, runs command, then tears down container
     """
     # set the command as an env var to be used by image when dockercompose is run
     os.environ['KAGGLE_COMMAND'] = command
@@ -61,7 +62,7 @@ def cli_kaggle_docker(command: str) -> str:
     return interpreter.stdout, interpreter.stderr
 
 def parse_subprocess_output(output: str, compose_service : str) -> str:
-    """Parses the output of the subprocess and returns the output of the code."""
+    """Cleanly formats the output of the python subprocess for readability in frontend"""
     docker_compose_file = "{service}-1".format(service=compose_service)
     files = output.split("Attaching to " + docker_compose_file)[1].split("\n")
     files = [file.split("|")[1].strip() if file.startswith(docker_compose_file + "  |") else file 
